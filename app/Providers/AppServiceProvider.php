@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\ServiceProvider;
@@ -24,6 +25,7 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+        $this->configureBlueprintMacros();
     }
 
     /**
@@ -46,5 +48,21 @@ class AppServiceProvider extends ServiceProvider
                 ->uncompromised()
             : null,
         );
+    }
+
+    /**
+     * Register a Blueprint macro so migrations can add the standard
+     * timestamps + created_by/updated_by/deleted_by + soft-delete columns in one call.
+     */
+    protected function configureBlueprintMacros(): void
+    {
+        Blueprint::macro('auditColumns', function (): void {
+            /** @var Blueprint $this */
+            $this->timestamps();
+            $this->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
+            $this->foreignId('updated_by')->nullable()->constrained('users')->nullOnDelete();
+            $this->foreignId('deleted_by')->nullable()->constrained('users')->nullOnDelete();
+            $this->softDeletes();
+        });
     }
 }
