@@ -6,8 +6,6 @@ namespace App\Models;
 use App\Models\Concerns\HasAuditColumns;
 use Carbon\CarbonImmutable;
 use Database\Factories\UserFactory;
-use Illuminate\Database\Eloquent\Attributes\Fillable;
-use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -25,6 +23,7 @@ use Spatie\Permission\Traits\HasRoles;
  * @property string|null $last_name
  * @property string|null $other_name
  * @property bool $profile_completed
+ * @property string|null $avatar_url
  * @property string|null $email
  * @property string $phone
  * @property CarbonImmutable|null $email_verified_at
@@ -40,12 +39,31 @@ use Spatie\Permission\Traits\HasRoles;
  * @property CarbonImmutable|null $created_at
  * @property CarbonImmutable|null $updated_at
  */
-#[Fillable(['first_name', 'last_name', 'other_name', 'profile_completed', 'email', 'phone', 'password', 'login_type', 'allow_login', 'referred_by'])]
-#[Hidden(['password', 'remember_token', 'two_factor_secret', 'two_factor_recovery_codes'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasAuditColumns, HasFactory, HasRoles, Notifiable;
+
+    protected $fillable = [
+        'first_name',
+        'last_name',
+        'other_name',
+        'profile_completed',
+        'avatar_url',
+        'email',
+        'phone',
+        'password',
+        'login_type',
+        'allow_login',
+        'referred_by',
+    ];
+
+    protected $hidden = [
+        'password',
+        'remember_token',
+        'two_factor_secret',
+        'two_factor_recovery_codes',
+    ];
 
     /**
      * Get the attributes that should be cast.
