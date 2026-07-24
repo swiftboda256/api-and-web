@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\V1\UserApp\AddressController;
 use App\Http\Controllers\Api\V1\UserApp\AuthController;
 use App\Http\Controllers\Api\V1\UserApp\ProfileController;
 use Illuminate\Support\Facades\Route;
@@ -21,10 +22,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('profile', [ProfileController::class, 'index'])->name('profile');
     Route::patch('profile', [ProfileController::class, 'update'])->name('profile.update');
 
-    Route::get('saved-places', [AuthController::class, 'savedPlaces'])->name('saved.places');
-    Route::post('saved-places', [AuthController::class, 'savedPlaces'])->name('saved.places');
-    Route::patch('saved-places', [AuthController::class, 'savedPlaces'])->name('saved.places');
-    Route::delete('saved-places', [AuthController::class, 'savedPlaces'])->name('saved.places');
+    Route::prefix('saved-places')->name('saved-places.')->group(function () {
+        Route::get('/', [AddressController::class, 'index'])->name('index');
+        Route::post('/', [AddressController::class, 'store'])->name('store');
+        Route::patch('{id}', [AddressController::class, 'update'])->name('update');
+        Route::delete('{id}', [AddressController::class, 'destroy'])->name('destroy');
+    });
 
     Route::get('trips', [AuthController::class, 'trips'])->name('trips');
     Route::post('trips/schedule', [AuthController::class, 'trips'])->name('trips');
