@@ -35,4 +35,12 @@ return [
         ],
     ],
 
+    'egosms' => [
+        'base_url' => env('EGOSMS_BASE_URL', 'https://comms.egosms.co/api/v1/json/'),
+        'username' => env('EGOSMS_USERNAME'),
+        'password' => env('EGOSMS_PASSWORD'),
+        'sender_id' => env('EGOSMS_SENDER_ID'),
+        'priority' => env('EGOSMS_PRIORITY', '0'),
+    ],
+
 ];

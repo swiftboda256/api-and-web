@@ -4,6 +4,7 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use App\Models\Concerns\HasAuditColumns;
+use Carbon\CarbonImmutable;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -14,31 +15,32 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
 
 /**
  * @property int $id
- * @property string $first_name
- * @property string $last_name
+ * @property string|null $first_name
+ * @property string|null $last_name
  * @property string|null $other_name
- * @property string $email
+ * @property bool $profile_completed
+ * @property string|null $email
  * @property string $phone
- * @property Carbon|null $email_verified_at
- * @property Carbon|null $phone_verified_at
+ * @property CarbonImmutable|null $email_verified_at
+ * @property CarbonImmutable|null $phone_verified_at
  * @property string $login_type
+ * @property bool $allow_login
  * @property string $status
  * @property string|null $password
  * @property string|null $remember_token
  * @property string|null $two_factor_secret
  * @property array<int, string>|null $two_factor_recovery_codes
- * @property Carbon|null $two_factor_confirmed_at
- * @property Carbon|null $created_at
- * @property Carbon|null $updated_at
+ * @property CarbonImmutable|null $two_factor_confirmed_at
+ * @property CarbonImmutable|null $created_at
+ * @property CarbonImmutable|null $updated_at
  */
-#[Fillable(['first_name', 'last_name', 'other_name', 'email', 'phone', 'password', 'login_type', 'referred_by'])]
+#[Fillable(['first_name', 'last_name', 'other_name', 'profile_completed', 'email', 'phone', 'password', 'login_type', 'allow_login', 'referred_by'])]
 #[Hidden(['password', 'remember_token', 'two_factor_secret', 'two_factor_recovery_codes'])]
 class User extends Authenticatable
 {
@@ -57,6 +59,8 @@ class User extends Authenticatable
             'phone_verified_at' => 'datetime',
             'last_login_at' => 'datetime',
             'password' => 'hashed',
+            'profile_completed' => 'boolean',
+            'allow_login' => 'boolean',
             'two_factor_secret' => 'encrypted',
             'two_factor_recovery_codes' => 'encrypted:array',
             'two_factor_confirmed_at' => 'datetime',

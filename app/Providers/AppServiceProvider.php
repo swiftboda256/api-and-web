@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Services\Sms\Contracts\SmsGateway;
+use App\Services\Sms\EgoSmsGateway;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Date;
@@ -16,7 +18,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->bind(SmsGateway::class, EgoSmsGateway::class);
     }
 
     /**
