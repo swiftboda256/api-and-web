@@ -15,6 +15,7 @@ class Trip extends BaseModel
         'customer_id',
         'rider_profile_id',
         'vehicle_id',
+        'vehicle_type_id',
         'zone_id',
         'type',
         'status',
@@ -90,6 +91,14 @@ class Trip extends BaseModel
     public function zone(): BelongsTo
     {
         return $this->belongsTo(Zone::class);
+    }
+
+    /**
+     * @return BelongsTo<VehicleType, $this>
+     */
+    public function vehicleType(): BelongsTo
+    {
+        return $this->belongsTo(VehicleType::class);
     }
 
     /**

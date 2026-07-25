@@ -118,6 +118,14 @@ class User extends Authenticatable
     }
 
     /**
+     * @return HasMany<UserDevice, $this>
+     */
+    public function devices(): HasMany
+    {
+        return $this->hasMany(UserDevice::class);
+    }
+
+    /**
      * @return HasMany<Transaction, $this>
      */
     public function transactions(): HasMany

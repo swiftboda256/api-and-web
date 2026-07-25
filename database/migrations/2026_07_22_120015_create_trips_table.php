@@ -14,6 +14,7 @@ return new class extends Migration
             $table->foreignId('customer_id')->constrained('users');
             $table->foreignId('rider_profile_id')->nullable()->constrained('rider_profiles')->nullOnDelete();
             $table->foreignId('vehicle_id')->nullable()->constrained('vehicles')->nullOnDelete();
+            $table->foreignId('vehicle_type_id')->nullable()->constrained('vehicle_types')->nullOnDelete();
             $table->foreignId('zone_id')->nullable()->constrained('zones')->nullOnDelete();
             $table->enum('type', ['ride', 'delivery']);
             $table->enum('status', ['requested', 'searching', 'accepted', 'arrived', 'in_progress', 'completed', 'cancelled'])->default('requested');

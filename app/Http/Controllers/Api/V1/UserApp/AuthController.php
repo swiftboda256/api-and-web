@@ -30,6 +30,10 @@ class AuthController extends Controller
     {
         $phone = $request->string('phone')->toString();
         $code = $request->string('code')->toString();
+        $device_id = $request->string('device_id');
+        $device_type = $request->string('device_type');
+        $fcm_token = $request->string('fcm_token');
+        $app_version = $request->input('app_version');
 
         $otpService->verify($phone, $code, self::PURPOSE);
 
@@ -46,6 +50,20 @@ class AuthController extends Controller
 
         $user->last_login_at = now();
         $user->save();
+
+        $user->devices()->update([
+            'active' => false,
+        ]);
+
+        $user->devices()->updateOrCreate(
+            [
+                'device_id' => $device_id,
+            ], [
+                'device_type' => $device_type,
+                'fcm_token' => $fcm_token,
+                'app_version' => $app_version,
+                'active' => true,
+            ]);
 
         // Revoke all previous tokens
         $user->tokens()->delete();

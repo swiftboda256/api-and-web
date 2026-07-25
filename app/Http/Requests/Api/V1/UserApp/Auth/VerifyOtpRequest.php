@@ -19,6 +19,10 @@ class VerifyOtpRequest extends FormRequest
         return [
             'phone' => ['required', 'string', 'regex:/^\+?[1-9]\d{6,14}$/'],
             'code' => ['required', 'digits:5'],
+            'device_type' => ['required', 'in:android,ios'],
+            'device_id' => ['required', 'string'],
+            'fcm_token' => ['required', 'string'],
+            'app_version' => ['nullable', 'string'],
         ];
     }
 }

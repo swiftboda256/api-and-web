@@ -11,6 +11,7 @@
     "require": {
         "php": "^8.3",
         "clickbar/laravel-magellan": "^2.2",
+        "kreait/laravel-firebase": "^7.2",
         "laravel/framework": "^13.17",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^3.0",

@@ -2,8 +2,25 @@
 
 namespace App\Models;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * @property int $id
+ * @property string $code
+ * @property string|null $description
+ * @property string $discount_type
+ * @property float $discount_value
+ * @property float|null $max_discount_amount
+ * @property float|null $min_trip_amount
+ * @property int|null $usage_limit_total
+ * @property int|null $usage_limit_per_user
+ * @property array<int, int>|null $applicable_vehicle_types
+ * @property array<int, int>|null $applicable_zone_ids
+ * @property CarbonImmutable|null $valid_from
+ * @property CarbonImmutable|null $valid_until
+ * @property bool $is_active
+ */
 class PromoCode extends BaseModel
 {
     protected $fillable = [

@@ -30,16 +30,16 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('{id}', [AddressController::class, 'destroy'])->name('destroy');
     });
 
-//    Route::prefix('trips')->name('trips.')->group(function () {
-//        Route::get('/', [TripController::class, 'index'])->name('index');
-//        Route::post('estimate', [TripController::class, 'estimateTrip'])->name('estimate');
-//        Route::post('schedule', [TripController::class, 'schedule'])->name('schedule');
-//        Route::post('order-ride', [TripController::class, 'store'])->name('order-ride');
-//        Route::post('order-delivery', [TripController::class, 'store'])->name('order-delivery');
-//        Route::patch('cancel-ride/{trip}', [TripController::class, 'cancel'])->name('cancel-ride');
-//        Route::patch('cancel-delivery/{trip}', [TripController::class, 'cancel'])->name('cancel-delivery');
-//    });
-//
+    Route::prefix('trips')->name('trips.')->group(function () {
+        Route::get('/', [TripController::class, 'index'])->name('index');
+        Route::post('estimate', [TripController::class, 'estimateTrip'])->name('estimate');
+        Route::post('schedule', [TripController::class, 'schedule'])->name('schedule');
+        Route::post('order-ride', [TripController::class, 'store'])->name('order-ride');
+        Route::post('order-delivery', [TripController::class, 'store'])->name('order-delivery');
+        Route::patch('cancel-ride/{trip}', [TripController::class, 'cancel'])->name('cancel-ride');
+        Route::patch('cancel-delivery/{trip}', [TripController::class, 'cancel'])->name('cancel-delivery');
+    });
+
 //    Route::get('wallet/balance', [AuthController::class, 'walletBalance'])->name('wallet.balance');
 //    Route::post('wallet/top-up', [AuthController::class, 'walletBalance'])->name('wallet.balance');
 //    Route::post('wallet/withdraw', [AuthController::class, 'walletBalance'])->name('wallet.balance');
