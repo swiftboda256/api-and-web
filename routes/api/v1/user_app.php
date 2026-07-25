@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\UserApp\AddressController;
 use App\Http\Controllers\Api\V1\UserApp\AuthController;
 use App\Http\Controllers\Api\V1\UserApp\ProfileController;
+use App\Http\Controllers\Api\V1\UserApp\TripController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function (Request $request) {
@@ -29,16 +30,19 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('{id}', [AddressController::class, 'destroy'])->name('destroy');
     });
 
-    Route::get('trips', [AuthController::class, 'trips'])->name('trips');
-    Route::post('trips/schedule', [AuthController::class, 'trips'])->name('trips');
-    Route::post('order-ride', [AuthController::class, 'orderRide'])->name('order.ride');
-    Route::post('order-delivery', [AuthController::class, 'orderRide'])->name('order.ride');
-    Route::patch('cancel-ride', [AuthController::class, 'cancelRide'])->name('cancel.ride');
-    Route::patch('cancel-delivery', [AuthController::class, 'cancelRide'])->name('cancel.ride');
-
-    Route::get('wallet/balance', [AuthController::class, 'walletBalance'])->name('wallet.balance');
-    Route::post('wallet/top-up', [AuthController::class, 'walletBalance'])->name('wallet.balance');
-    Route::post('wallet/withdraw', [AuthController::class, 'walletBalance'])->name('wallet.balance');
-    Route::get('wallet/history', [AuthController::class, 'walletBalance'])->name('wallet.balance');
+//    Route::prefix('trips')->name('trips.')->group(function () {
+//        Route::get('/', [TripController::class, 'index'])->name('index');
+//        Route::post('estimate', [TripController::class, 'estimateTrip'])->name('estimate');
+//        Route::post('schedule', [TripController::class, 'schedule'])->name('schedule');
+//        Route::post('order-ride', [TripController::class, 'store'])->name('order-ride');
+//        Route::post('order-delivery', [TripController::class, 'store'])->name('order-delivery');
+//        Route::patch('cancel-ride/{trip}', [TripController::class, 'cancel'])->name('cancel-ride');
+//        Route::patch('cancel-delivery/{trip}', [TripController::class, 'cancel'])->name('cancel-delivery');
+//    });
+//
+//    Route::get('wallet/balance', [AuthController::class, 'walletBalance'])->name('wallet.balance');
+//    Route::post('wallet/top-up', [AuthController::class, 'walletBalance'])->name('wallet.balance');
+//    Route::post('wallet/withdraw', [AuthController::class, 'walletBalance'])->name('wallet.balance');
+//    Route::get('wallet/history', [AuthController::class, 'walletBalance'])->name('wallet.balance');
 
 });
