@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\V1\UserApp\AddressController;
 use App\Http\Controllers\Api\V1\UserApp\AuthController;
 use App\Http\Controllers\Api\V1\UserApp\ProfileController;
 use App\Http\Controllers\Api\V1\UserApp\TripController;
+use App\Http\Controllers\Api\V1\UserApp\WalletController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function (Request $request) {
@@ -40,9 +41,14 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('cancel-delivery/{trip}', [TripController::class, 'cancel'])->name('cancel-delivery');
     });
 
-//    Route::get('wallet/balance', [AuthController::class, 'walletBalance'])->name('wallet.balance');
-//    Route::post('wallet/top-up', [AuthController::class, 'walletBalance'])->name('wallet.balance');
-//    Route::post('wallet/withdraw', [AuthController::class, 'walletBalance'])->name('wallet.balance');
-//    Route::get('wallet/history', [AuthController::class, 'walletBalance'])->name('wallet.balance');
+    Route::prefix('wallet')->name('wallet.')->group(function () {
+        Route::post('/', [WalletController::class, 'store'])->name('store');
+        Route::get('balance', [WalletController::class, 'balance'])->name('balance');
+        Route::patch('pin-change', [WalletController::class, 'updatePin'])->name('pin.update');
+        Route::post('top-up', [WalletController::class, 'topUp'])->name('top-up');
+        Route::post('withdraw', [WalletController::class, 'withdraw'])->name('withdraw');
+        Route::get('withdrawal-requests', [WalletController::class, 'withdrawalRequests'])->name('withdrawal-requests');
+        Route::get('history', [WalletController::class, 'history'])->name('history');
+    });
 
 });

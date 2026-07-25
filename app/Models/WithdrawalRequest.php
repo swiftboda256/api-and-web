@@ -2,8 +2,26 @@
 
 namespace App\Models;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property int $id
+ * @property int $user_id
+ * @property int $wallet_id
+ * @property float $amount
+ * @property float|null $balance_before
+ * @property float|null $balance_after
+ * @property string $channel
+ * @property string $provider
+ * @property string|null $account_identifier_masked
+ * @property string|null $external_reference
+ * @property string $status
+ * @property CarbonImmutable|null $processed_at
+ * @property string|null $rejection_reason
+ * @property CarbonImmutable|null $created_at
+ * @property CarbonImmutable|null $updated_at
+ */
 class WithdrawalRequest extends BaseModel
 {
     protected $fillable = [
