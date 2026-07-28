@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\RiderApp\AuthController;
 use App\Http\Controllers\Api\V1\RiderApp\ProfileController;
 use App\Http\Controllers\Api\V1\RiderApp\RideController;
+use App\Http\Controllers\Api\V1\RiderApp\VehicleTypeController;
 use App\Http\Controllers\Api\V1\RiderApp\WalletController;
 
 Route::prefix('auth')->name('auth.')->group(function () {
@@ -14,6 +15,8 @@ Route::prefix('auth')->name('auth.')->group(function () {
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('profile', [ProfileController::class, 'index'])->name('profile');
     Route::patch('profile', [ProfileController::class, 'update'])->name('profile.update');
+
+    Route::get('vehicle-types', [VehicleTypeController::class, 'index'])->name('vehicle-types');
 
     Route::prefix('wallet')->name('wallet.')->group(function () {
         Route::post('/', [WalletController::class, 'store'])->name('store');
