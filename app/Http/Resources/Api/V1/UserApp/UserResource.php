@@ -26,6 +26,7 @@ class UserResource extends JsonResource
             'avatar_url' => $this->avatar_url,
             'status' => $this->status,
             'profile_completed' => $this->profile_completed,
+            'rider_profile' => $this->whenLoaded('riderProfile', fn () => new RiderProfileResource($this->riderProfile)),
         ];
     }
 }

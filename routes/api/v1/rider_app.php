@@ -1,0 +1,29 @@
+<?php
+
+use App\Http\Controllers\Api\V1\RiderApp\AuthController;
+use App\Http\Controllers\Api\V1\RiderApp\ProfileController;
+use App\Http\Controllers\Api\V1\RiderApp\WalletController;
+
+Route::prefix('auth')->name('auth.')->group(function () {
+    Route::post('login', [AuthController::class, 'login'])->name('otp.request');
+    Route::post('verify-otp', [AuthController::class, 'verifyOtp'])->name('otp.verify');
+    Route::post('logout', [AuthController::class, 'logout'])->middleware('auth:sanctum')->name('logout');
+});
+
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('profile', [ProfileController::class, 'index'])->name('profile');
+    Route::patch('profile', [ProfileController::class, 'update'])->name('profile.update');
+
+
+
+    Route::prefix('wallet')->name('wallet.')->group(function () {
+        Route::post('/', [WalletController::class, 'store'])->name('store');
+        Route::get('balance', [WalletController::class, 'balance'])->name('balance');
+        Route::patch('pin-change', [WalletController::class, 'updatePin'])->name('pin.update');
+        Route::post('top-up', [WalletController::class, 'topUp'])->name('top-up');
+        Route::post('withdraw', [WalletController::class, 'withdraw'])->name('withdraw');
+        Route::get('withdrawal-requests', [WalletController::class, 'withdrawalRequests'])->name('withdrawal-requests');
+        Route::get('history', [WalletController::class, 'history'])->name('history');
+    });
+
+});

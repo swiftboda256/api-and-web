@@ -11,3 +11,4 @@ Route::get('/', function (Request $request) {
 });
 
 Route::prefix('v1/user-app')->name('api.v1.user-app.')->group(base_path('routes/api/v1/user_app.php'));
+Route::prefix('v1/rider-app')->name('api.v1.rider-app.')->group(base_path('routes/api/v1/rider_app.php'));
