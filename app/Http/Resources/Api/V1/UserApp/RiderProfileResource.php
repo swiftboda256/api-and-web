@@ -26,6 +26,10 @@ class RiderProfileResource extends JsonResource
             'kyc_status' => $this->kyc_status,
             'kyc_rejection_reason' => $this->kyc_rejection_reason,
             'availability_status' => $this->availability_status,
+            'current_location' => $this->current_location ? [
+                'latitude' => $this->current_location->getLatitude(),
+                'longitude' => $this->current_location->getLongitude(),
+            ] : null,
             'total_trips' => $this->total_trips,
             'total_earnings' => $this->total_earnings,
         ];

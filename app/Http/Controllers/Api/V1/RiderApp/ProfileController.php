@@ -17,7 +17,7 @@ class ProfileController extends Controller
         /** @var User $user */
         $user = $request->user();
 
-        return self::success(new UserResource($user->load('riderProfile')));
+        return self::success(new UserResource($user->load(['riderProfile.vehicle.vehicleType', 'riderProfile.documents'])));
     }
 
     public function update(UpdateProfileRequest $request, RiderProfileService $riderProfileService): JsonResponse
@@ -26,6 +26,7 @@ class ProfileController extends Controller
         $user = $request->user();
 
         $user = $riderProfileService->updateProfile($user, $request->validated());
+        $user->load(['riderProfile.vehicle.vehicleType', 'riderProfile.documents']);
 
         return self::success(new UserResource($user));
     }

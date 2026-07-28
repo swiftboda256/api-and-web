@@ -39,7 +39,7 @@ class AuthController extends Controller
 
         $otpService->verify($phone, $code, self::PURPOSE);
 
-        $user = User::query()->firstOrCreate(
+        $user = User::query()->with('riderProfile')->firstOrCreate(
             ['phone' => $phone],
             ['login_type' => self::OTP_CHANNEL],
         );

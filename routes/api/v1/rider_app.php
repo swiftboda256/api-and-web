@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\RiderApp\AuthController;
 use App\Http\Controllers\Api\V1\RiderApp\ProfileController;
+use App\Http\Controllers\Api\V1\RiderApp\RideController;
 use App\Http\Controllers\Api\V1\RiderApp\WalletController;
 
 Route::prefix('auth')->name('auth.')->group(function () {
@@ -14,8 +15,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('profile', [ProfileController::class, 'index'])->name('profile');
     Route::patch('profile', [ProfileController::class, 'update'])->name('profile.update');
 
-
-
     Route::prefix('wallet')->name('wallet.')->group(function () {
         Route::post('/', [WalletController::class, 'store'])->name('store');
         Route::get('balance', [WalletController::class, 'balance'])->name('balance');
@@ -24,6 +23,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('withdraw', [WalletController::class, 'withdraw'])->name('withdraw');
         Route::get('withdrawal-requests', [WalletController::class, 'withdrawalRequests'])->name('withdrawal-requests');
         Route::get('history', [WalletController::class, 'history'])->name('history');
+    });
+
+    Route::prefix('rides')->name('rides.')->group(function () {
+        Route::get('/', [RideController::class, 'index'])->name('index');
+        Route::get('/new', [RideController::class, 'newTrips'])->name('new');
+        Route::patch('{trip}/accept', [RideController::class, 'accept'])->name('accept');
+        Route::patch('{trip}/start', [RideController::class, 'start'])->name('start');
+        Route::patch('{trip}/cancel', [RideController::class, 'cancel'])->name('cancel');
+        Route::patch('{trip}/end', [RideController::class, 'end'])->name('end');
     });
 
 });

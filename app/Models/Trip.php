@@ -13,7 +13,7 @@ class Trip extends BaseModel
     protected $fillable = [
         'trip_number',
         'customer_id',
-        'rider_profile_id',
+        'rider_id',
         'vehicle_id',
         'vehicle_type_id',
         'zone_id',
@@ -70,11 +70,11 @@ class Trip extends BaseModel
     }
 
     /**
-     * @return BelongsTo<RiderProfile, $this>
+     * @return BelongsTo<User, $this>
      */
-    public function riderProfile(): BelongsTo
+    public function rider(): BelongsTo
     {
-        return $this->belongsTo(RiderProfile::class);
+        return $this->belongsTo(User::class, 'rider_id');
     }
 
     /**

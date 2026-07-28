@@ -5,21 +5,30 @@ namespace App\Services\Rider;
 use App\Models\Document;
 use App\Models\RiderProfile;
 use App\Models\User;
+use App\Models\Vehicle;
+use Clickbar\Magellan\Data\Geometries\Point;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
-use Throwable;
+use Illuminate\Validation\ValidationException;
 
 readonly class RiderProfileService
 {
+    private const array DOCUMENT_TYPES = ['national_id', 'driving_license'];
+
     /**
      * @param  array<string, mixed>  $data
      */
     public function updateProfile(User $user, array $data): User
     {
         return DB::transaction(function () use ($user, $data): User {
-            $user->fill(Arr::only($data, ['first_name', 'last_name', 'other_name', 'email', 'avatar_url']));
+            $user->fill(Arr::only($data, ['first_name', 'last_name', 'other_name', 'email']));
+
+            if (! empty($data['avatar'])) {
+                $user->avatar_url = $this->storeAvatar($user, $data['avatar']);
+            }
+
             $user->profile_completed = filled($user->first_name) && filled($user->last_name);
             $user->save();
 
@@ -33,18 +42,78 @@ readonly class RiderProfileService
                 'gender',
             ]));
 
-            if (! empty($data['documents'])) {
-                foreach ($data['documents'] as $document) {
-                    $this->storeDocument($riderProfile, $document['type'], $document['file']);
-                }
+            if (! empty($data['latitude']) && ! empty($data['longitude'])) {
+                $riderProfile->current_location = Point::makeGeodetic((float) $data['latitude'], (float) $data['longitude']);
+                $riderProfile->last_location_at = now();
+            }
 
+            $documentUploaded = false;
+
+            foreach (self::DOCUMENT_TYPES as $type) {
+                if (! empty($data[$type])) {
+                    $this->storeDocument($riderProfile, $type, $data[$type]);
+                    $documentUploaded = true;
+                }
+            }
+
+            if ($documentUploaded) {
                 $riderProfile->kyc_status = 'pending';
             }
 
             $riderProfile->save();
 
-            return $user->setRelation('riderProfile', $riderProfile->fresh());
+            $vehicleFields = array_filter(
+                Arr::only($data, ['vehicle_type_id', 'make', 'year', 'color', 'plate_number', 'registration_number', 'insurance_expiry_at']),
+                fn ($value): bool => $value !== null,
+            );
+
+            if ($vehicleFields !== []) {
+                $this->updateVehicle($riderProfile, $vehicleFields);
+            }
+
+            return $user->setRelation('riderProfile', $riderProfile->fresh(['vehicle']));
         });
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function updateVehicle(RiderProfile $riderProfile, array $data): void
+    {
+        $vehicle = $riderProfile->vehicle;
+
+        if (! $vehicle) {
+            if (empty($data['vehicle_type_id']) || empty($data['plate_number'])) {
+                throw ValidationException::withMessages([
+                    'vehicle_type_id' => 'Vehicle type and plate number are required to add a vehicle.',
+                ]);
+            }
+
+            Vehicle::query()->create([
+                ...$data,
+                'rider_profile_id' => $riderProfile->id,
+                'status' => 'pending',
+            ]);
+
+            return;
+        }
+
+        $vehicle->fill($data);
+        $vehicle->status = 'pending';
+        $vehicle->save();
+    }
+
+    private function storeAvatar(User $user, UploadedFile $file): string
+    {
+        Storage::disk('public')->deleteDirectory("avatars/{$user->id}");
+
+        $path = $file->store("avatars/{$user->id}", 'public');
+
+        if ($path === false) {
+            throw ValidationException::withMessages(['avatar' => 'Failed to upload avatar image.']);
+        }
+
+        return Storage::disk('public')->url($path);
     }
 
     private function storeDocument(RiderProfile $riderProfile, string $type, UploadedFile $file): void

@@ -26,7 +26,19 @@ class UserResource extends JsonResource
             'avatar_url' => $this->avatar_url,
             'status' => $this->status,
             'profile_completed' => $this->profile_completed,
+            'referral_code' => $this->referral_code,
             'rider_profile' => $this->whenLoaded('riderProfile', fn () => new RiderProfileResource($this->riderProfile)),
+            'vehicle' => $this->whenLoaded('riderProfile', fn () => $this->riderProfile?->vehicle
+                ? new VehicleResource($this->riderProfile->vehicle)
+                : null),
+            'documents' => $this->whenLoaded('riderProfile', fn () => $this->riderProfile?->relationLoaded('documents')
+                ? DocumentResource::collection($this->riderProfile->documents)
+                : null),
+            'ratings' => [
+                'average' => $this->rating_avg,
+                'total' => $this->rating_count,
+            ],
+
         ];
     }
 }

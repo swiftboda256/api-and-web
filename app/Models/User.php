@@ -24,6 +24,9 @@ use Spatie\Permission\Traits\HasRoles;
  * @property string|null $other_name
  * @property bool $profile_completed
  * @property string|null $avatar_url
+ * @property string $rating_avg
+ * @property int $rating_count
+ * @property string|null $referral_code
  * @property string|null $email
  * @property string $phone
  * @property CarbonImmutable|null $email_verified_at
@@ -79,10 +82,30 @@ class User extends Authenticatable
             'password' => 'hashed',
             'profile_completed' => 'boolean',
             'allow_login' => 'boolean',
+            'rating_avg' => 'decimal:2',
+            'rating_count' => 'integer',
             'two_factor_secret' => 'encrypted',
             'two_factor_recovery_codes' => 'encrypted:array',
             'two_factor_confirmed_at' => 'datetime',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::creating(function (User $user): void {
+            if (blank($user->referral_code)) {
+                $user->referral_code = self::generateReferralCode();
+            }
+        });
+    }
+
+    private static function generateReferralCode(): string
+    {
+        do {
+            $code = strtoupper(Str::random(8));
+        } while (self::query()->where('referral_code', $code)->exists());
+
+        return $code;
     }
 
     /**
@@ -147,6 +170,14 @@ class User extends Authenticatable
     public function trips(): HasMany
     {
         return $this->hasMany(Trip::class, 'customer_id');
+    }
+
+    /**
+     * @return HasMany<Rating, $this>
+     */
+    public function ratingsReceived(): HasMany
+    {
+        return $this->hasMany(Rating::class, 'ratee_id');
     }
 
     /**

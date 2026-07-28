@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Models\Rating;
+use App\Observers\RatingObserver;
 use App\Services\Payment\Contracts\PaymentGateway;
 use App\Services\Payment\MockPaymentGateway;
 use App\Services\Sms\Contracts\SmsGateway;
@@ -31,6 +33,8 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->configureDefaults();
         $this->configureBlueprintMacros();
+
+        Rating::observe(RatingObserver::class);
     }
 
     /**
