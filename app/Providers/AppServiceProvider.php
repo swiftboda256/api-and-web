@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Models\Configuration;
 use App\Models\Rating;
 use App\Observers\RatingObserver;
 use App\Services\Payment\Contracts\PaymentGateway;
@@ -35,6 +36,10 @@ class AppServiceProvider extends ServiceProvider
         $this->configureBlueprintMacros();
 
         Rating::observe(RatingObserver::class);
+
+        if (! $this->app->runningInConsole()) {
+            $this->configureSanctumTokenExpiration();
+        }
     }
 
     /**
@@ -57,6 +62,17 @@ class AppServiceProvider extends ServiceProvider
                 ->uncompromised()
             : null,
         );
+    }
+
+    /**
+     * Set Sanctum's token expiration (in minutes) from the "configurations" table
+     * instead of a static config/env value, so it can be changed without a deploy.
+     */
+    protected function configureSanctumTokenExpiration(): void
+    {
+        $days = (int) Configuration::get('sanctum_token_expiration_days', 30);
+
+        config(['sanctum.expiration' => $days > 0 ? $days * 24 * 60 : null]);
     }
 
     /**

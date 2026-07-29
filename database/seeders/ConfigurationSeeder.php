@@ -18,5 +18,15 @@ class ConfigurationSeeder extends Seeder
                 'is_public' => false,
             ],
         );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'sanctum_token_expiration_days'],
+            [
+                'value' => 30,
+                'group' => 'auth',
+                'description' => 'Number of days before an issued Sanctum API token expires. Set to 0 for tokens that never expire.',
+                'is_public' => false,
+            ],
+        );
     }
 }

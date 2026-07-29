@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\UserApp\AddressController;
 use App\Http\Controllers\Api\V1\UserApp\AuthController;
+use App\Http\Controllers\Api\V1\UserApp\NotificationController;
 use App\Http\Controllers\Api\V1\UserApp\ProfileController;
 use App\Http\Controllers\Api\V1\UserApp\TripController;
 use App\Http\Controllers\Api\V1\UserApp\WalletController;
@@ -49,6 +50,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('withdraw', [WalletController::class, 'withdraw'])->name('withdraw');
         Route::get('withdrawal-requests', [WalletController::class, 'withdrawalRequests'])->name('withdrawal-requests');
         Route::get('history', [WalletController::class, 'history'])->name('history');
+    });
+
+    Route::prefix('notifications')->name('notifications.')->group(function () {
+        Route::get('/', [NotificationController::class, 'index'])->name('index');
+        Route::post('/read', [NotificationController::class, 'markAsRead'])->name('read');
+        Route::delete('/', [NotificationController::class, 'destroy'])->name('destroy');
     });
 
 });

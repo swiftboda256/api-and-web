@@ -48,6 +48,9 @@ return [
     | considered expired. This will override any values set in the token's
     | "expires_at" attribute, but first-party sessions are not affected.
     |
+    | This default is overridden at runtime by AppServiceProvider from the
+    | "sanctum_token_expiration_days" record in the "configurations" table.
+    |
     */
 
     'expiration' => null,

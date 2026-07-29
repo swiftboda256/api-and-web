@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\RiderApp\AuthController;
+use App\Http\Controllers\Api\V1\RiderApp\NotificationController;
 use App\Http\Controllers\Api\V1\RiderApp\ProfileController;
 use App\Http\Controllers\Api\V1\RiderApp\RideController;
 use App\Http\Controllers\Api\V1\RiderApp\VehicleTypeController;
@@ -35,6 +36,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('{trip}/start', [RideController::class, 'start'])->name('start');
         Route::patch('{trip}/cancel', [RideController::class, 'cancel'])->name('cancel');
         Route::patch('{trip}/end', [RideController::class, 'end'])->name('end');
+    });
+
+    Route::prefix('notifications')->name('notifications.')->group(function () {
+        Route::get('/', [NotificationController::class, 'index'])->name('index');
+        Route::post('/read', [NotificationController::class, 'markAsRead'])->name('read');
+        Route::post('/delete', [NotificationController::class, 'destroy'])->name('destroy');
     });
 
 });
