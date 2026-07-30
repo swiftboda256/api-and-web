@@ -45,5 +45,24 @@ class UserSeeder extends Seeder
         if (! $adminUser->hasRole('admin')) {
             $adminUser->assignRole('admin');
         }
+
+        $superAdminUser = User::query()->firstOrCreate(
+            ['email' => 'admin@swiftboda.com'],
+            [
+                'phone' => '0123456789',
+                'first_name' => 'Super',
+                'last_name' => 'Admin',
+                'password' => Hash::make('@Dmin1234'),
+                'login_type' => 'password',
+                'status' => 'active',
+                'allow_login' => true,
+                'phone_verified_at' => now(),
+                'email_verified_at' => now(),
+            ],
+        );
+
+        if (! $superAdminUser->hasRole('super_admin')) {
+            $superAdminUser->assignRole('super_admin');
+        }
     }
 }
