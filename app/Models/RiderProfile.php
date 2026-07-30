@@ -8,6 +8,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 
+/**
+ * @property float|null $distance_meters Only populated by RiderSearchService::nearby(), via a raw ST::distanceSphere select.
+ */
 class RiderProfile extends BaseModel
 {
     protected $fillable = [

@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\V1\UserApp\AuthController;
 use App\Http\Controllers\Api\V1\UserApp\DeviceController;
 use App\Http\Controllers\Api\V1\UserApp\NotificationController;
 use App\Http\Controllers\Api\V1\UserApp\ProfileController;
+use App\Http\Controllers\Api\V1\UserApp\RiderController;
 use App\Http\Controllers\Api\V1\UserApp\TripController;
 use App\Http\Controllers\Api\V1\UserApp\WalletController;
 use Illuminate\Support\Facades\Route;
@@ -34,6 +35,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::prefix('trips')->name('trips.')->group(function () {
+        Route::get('riders', [RiderController::class, 'nearbyRiders'])->name('riders');
         Route::get('/', [TripController::class, 'index'])->name('index');
         Route::post('estimate', [TripController::class, 'estimateTrip'])->name('estimate');
         Route::post('schedule', [TripController::class, 'schedule'])->name('schedule');
