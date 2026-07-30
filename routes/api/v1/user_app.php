@@ -55,7 +55,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('notifications')->name('notifications.')->group(function () {
         Route::get('/', [NotificationController::class, 'index'])->name('index');
         Route::post('/read', [NotificationController::class, 'markAsRead'])->name('read');
-        Route::delete('/', [NotificationController::class, 'destroy'])->name('destroy');
+        Route::post('/delete', [NotificationController::class, 'destroy'])->name('destroy');
     });
 
 });
