@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\UserApp\AddressController;
 use App\Http\Controllers\Api\V1\UserApp\AuthController;
+use App\Http\Controllers\Api\V1\UserApp\DeviceController;
 use App\Http\Controllers\Api\V1\UserApp\NotificationController;
 use App\Http\Controllers\Api\V1\UserApp\ProfileController;
 use App\Http\Controllers\Api\V1\UserApp\TripController;
@@ -56,6 +57,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/', [NotificationController::class, 'index'])->name('index');
         Route::post('/read', [NotificationController::class, 'markAsRead'])->name('read');
         Route::post('/delete', [NotificationController::class, 'destroy'])->name('destroy');
+    });
+
+    Route::prefix('devices')->name('devices.')->group(function () {
+        Route::get('/', [DeviceController::class, 'index'])->name('index');
+        Route::patch('{id}', [DeviceController::class, 'update'])->name('update');
+        Route::delete('{id}', [DeviceController::class, 'destroy'])->name('destroy');
     });
 
 });

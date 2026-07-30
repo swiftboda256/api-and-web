@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\RiderApp\AuthController;
+use App\Http\Controllers\Api\V1\RiderApp\DeviceController;
 use App\Http\Controllers\Api\V1\RiderApp\NotificationController;
 use App\Http\Controllers\Api\V1\RiderApp\ProfileController;
 use App\Http\Controllers\Api\V1\RiderApp\RideController;
@@ -42,6 +43,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/', [NotificationController::class, 'index'])->name('index');
         Route::post('/read', [NotificationController::class, 'markAsRead'])->name('read');
         Route::post('/delete', [NotificationController::class, 'destroy'])->name('destroy');
+    });
+
+    Route::prefix('devices')->name('devices.')->group(function () {
+        Route::get('/', [DeviceController::class, 'index'])->name('index');
+        Route::patch('{id}', [DeviceController::class, 'update'])->name('update');
+        Route::delete('{id}', [DeviceController::class, 'destroy'])->name('destroy');
     });
 
 });
