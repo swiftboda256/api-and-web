@@ -3,14 +3,12 @@
     "name": "laravel/blank-livewire-starter-kit",
     "type": "project",
     "description": "The official Laravel starter kit for Livewire.",
-    "keywords": [
-        "laravel",
-        "framework"
-    ],
+    "keywords": ["laravel", "framework"],
     "license": "MIT",
     "require": {
         "php": "^8.3",
         "clickbar/laravel-magellan": "^2.2",
+        "filament/filament": "^5.0",
         "kreait/laravel-firebase": "^7.2",
         "laravel/framework": "^13.17",
         "laravel/sanctum": "^4.0",
@@ -77,7 +75,8 @@
         ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
-            "@php artisan package:discover --ansi"
+            "@php artisan package:discover --ansi",
+            "@php artisan filament:upgrade"
         ],
         "post-update-cmd": [
             "@php artisan vendor:publish --tag=laravel-assets --ansi --force"
