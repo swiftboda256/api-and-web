@@ -58,6 +58,7 @@ class User extends Authenticatable
         'password',
         'login_type',
         'allow_login',
+        'status',
         'referred_by',
     ];
 
