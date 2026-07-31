@@ -20,7 +20,7 @@ class ConfigurationResource extends Resource
 {
     protected static ?string $model = Configuration::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedCog6Tooth;
 
     protected static ?string $recordTitleAttribute = 'key';
 
