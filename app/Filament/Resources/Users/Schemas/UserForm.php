@@ -23,15 +23,16 @@ class UserForm
                 TextInput::make('phone')
                     ->tel()
                     ->required(),
-                Select::make('login_type')
-                    ->options([
-                        'sms' => 'SMS',
-                        'email' => 'Email',
-                    ])
-                    ->default('sms'),
-                Toggle::make('allow_login')
+                FileUpload::make('avatar_url')
+                    ->disk('public')
+                    ->directory('avatars'),
+                Select::make('roles')
+                    ->relationship('roles', 'name')
+                    ->multiple()
+                    ->preload()
+                    ->searchable(),
+                Toggle::make('notify')
                     ->required(),
-                FileUpload::make('avatar_url'),
             ]);
     }
 }

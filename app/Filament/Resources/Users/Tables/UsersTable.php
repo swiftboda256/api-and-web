@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Users\Tables;
 
 use App\Models\User;
+use App\Services\User\UserCredentialService;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\BulkActionGroup;
@@ -11,6 +12,7 @@ use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ForceDeleteBulkAction;
 use Filament\Actions\RestoreBulkAction;
+use Filament\Notifications\Notification;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\ImageColumn;
@@ -88,6 +90,21 @@ class UsersTable
             ->recordActions([
                 ActionGroup::make([
                     EditAction::make(),
+                    Action::make('sendCredentials')
+                        ->label('Send Credentials')
+                        ->icon(Heroicon::OutlinedKey)
+                        ->color('gray')
+                        ->requiresConfirmation()
+                        ->modalDescription('This generates a new password, revokes all of this user\'s active sessions and API tokens, and emails them their new credentials.')
+                        ->visible(fn (User $record): bool => $record->login_type === 'password' && filled($record->email))
+                        ->action(function (User $record, UserCredentialService $userCredentialService): void {
+                            $userCredentialService->sendNewCredentials($record);
+
+                            Notification::make()
+                                ->title('Credentials sent')
+                                ->success()
+                                ->send();
+                        }),
                     Action::make('suspend')
                         ->label('Suspend')
                         ->icon(Heroicon::OutlinedPauseCircle)
