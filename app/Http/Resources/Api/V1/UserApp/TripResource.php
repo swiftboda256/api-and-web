@@ -31,6 +31,16 @@ class TripResource extends JsonResource
                 'longitude' => $this->dropoff_location->getLongitude(),
                 'address' => $this->dropoff_address,
             ],
+            'rider' => $this->whenLoaded('rider', fn () => [
+                'name' => $this->rider->name,
+                'rider_ref' => $this->rider->riderProfile->rider_ref,
+                'gender' => $this->rider->riderProfile->gender,
+                'phone' => $this->rider->phone,
+                'current_location' => [
+                    'latitude' => $this->rider->riderProfile->current_location?->getLatitude(),
+                    'longitude' => $this->rider->riderProfile->current_location?->getLongitude(),
+                ],
+            ]),
             'vehicle_type' => $this->whenLoaded('vehicleType', fn () => [
                 'id' => $this->vehicleType->id,
                 'name' => $this->vehicleType->name,

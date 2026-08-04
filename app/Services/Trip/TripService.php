@@ -88,6 +88,15 @@ readonly class TripService
         ];
     }
 
+    public function show(User $user, int $tripId): Trip
+    {
+        return Trip::query()
+            ->where('customer_id', $user->id)
+            ->where('id', $tripId)
+            ->with(['rider.riderProfile', 'vehicleType', 'fareBreakdown', 'deliveryDetails', 'cancellationReason'])
+            ->firstOrFail();
+    }
+
     /**
      * @param  array<string, mixed>  $data
      */

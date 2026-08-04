@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Services\Trip\TripService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class TripController extends Controller
 {
@@ -24,6 +25,14 @@ class TripController extends Controller
         $user = $request->user();
 
         return self::success(new TripCollection($tripService->list($user, $request->validated())));
+    }
+
+    public function show(Request $request, int $trip, TripService $tripService): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        return self::success(new TripResource($tripService->show($user, $trip)));
     }
 
     public function estimateTrip(EstimateTripRequest $request, TripService $tripService): JsonResponse
