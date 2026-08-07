@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\UserApp\AddressController;
 use App\Http\Controllers\Api\V1\UserApp\AuthController;
 use App\Http\Controllers\Api\V1\UserApp\DeviceController;
+use App\Http\Controllers\Api\V1\UserApp\EmergencyContactController;
 use App\Http\Controllers\Api\V1\UserApp\NotificationController;
 use App\Http\Controllers\Api\V1\UserApp\ProfileController;
 use App\Http\Controllers\Api\V1\UserApp\RiderController;
@@ -76,6 +77,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/', [SupportTicketController::class, 'index'])->name('index');
         Route::get('/{id}', [SupportTicketController::class, 'show'])->name('show');
         Route::post('/', [SupportTicketController::class, 'store'])->name('store');
+    });
+
+    Route::prefix('emergency-contacts')->name('emergency-contacts.')->group(function () {
+        Route::get('/', [EmergencyContactController::class, 'index'])->name('index');
+        Route::post('/', [EmergencyContactController::class, 'store'])->name('store');
+        Route::patch('{id}', [EmergencyContactController::class, 'update'])->name('update');
+        Route::delete('{id}', [EmergencyContactController::class, 'destroy'])->name('destroy');
     });
 
 });

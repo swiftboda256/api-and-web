@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\RiderApp\AuthController;
 use App\Http\Controllers\Api\V1\RiderApp\DeviceController;
+use App\Http\Controllers\Api\V1\RiderApp\EmergencyContactController;
 use App\Http\Controllers\Api\V1\RiderApp\NotificationController;
 use App\Http\Controllers\Api\V1\RiderApp\ProfileController;
 use App\Http\Controllers\Api\V1\RiderApp\RideController;
@@ -59,6 +60,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/', [SupportTicketController::class, 'index'])->name('index');
         Route::get('/{id}', [SupportTicketController::class, 'show'])->name('show');
         Route::post('/', [SupportTicketController::class, 'store'])->name('store');
+    });
+
+    Route::prefix('emergency-contacts')->name('emergency-contacts.')->group(function () {
+        Route::get('/', [EmergencyContactController::class, 'index'])->name('index');
+        Route::post('/', [EmergencyContactController::class, 'store'])->name('store');
+        Route::patch('{id}', [EmergencyContactController::class, 'update'])->name('update');
+        Route::delete('{id}', [EmergencyContactController::class, 'destroy'])->name('destroy');
     });
 
 });

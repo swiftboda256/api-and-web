@@ -142,6 +142,14 @@ class User extends Authenticatable
     }
 
     /**
+     * @return HasMany<EmergencyContact, $this>
+     */
+    public function emergencyContacts(): HasMany
+    {
+        return $this->hasMany(EmergencyContact::class);
+    }
+
+    /**
      * @return HasMany<UserDevice, $this>
      */
     public function devices(): HasMany
