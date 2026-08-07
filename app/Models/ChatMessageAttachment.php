@@ -2,8 +2,19 @@
 
 namespace App\Models;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property int $id
+ * @property int $chat_message_id
+ * @property string $type
+ * @property string $url
+ * @property string|null $mime_type
+ * @property int|null $size
+ * @property CarbonImmutable|null $created_at
+ * @property CarbonImmutable|null $updated_at
+ */
 class ChatMessageAttachment extends BaseModel
 {
     protected $fillable = [

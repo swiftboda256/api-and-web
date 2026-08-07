@@ -5,6 +5,8 @@ use App\Http\Controllers\Api\V1\RiderApp\DeviceController;
 use App\Http\Controllers\Api\V1\RiderApp\NotificationController;
 use App\Http\Controllers\Api\V1\RiderApp\ProfileController;
 use App\Http\Controllers\Api\V1\RiderApp\RideController;
+use App\Http\Controllers\Api\V1\RiderApp\SupportCategoryController;
+use App\Http\Controllers\Api\V1\RiderApp\SupportTicketController;
 use App\Http\Controllers\Api\V1\RiderApp\VehicleTypeController;
 use App\Http\Controllers\Api\V1\RiderApp\WalletController;
 
@@ -49,6 +51,14 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/', [DeviceController::class, 'index'])->name('index');
         Route::patch('{id}', [DeviceController::class, 'update'])->name('update');
         Route::delete('{id}', [DeviceController::class, 'destroy'])->name('destroy');
+    });
+
+    Route::get('support-categories', [SupportCategoryController::class, 'index'])->name('support-categories');
+
+    Route::prefix('support-tickets')->name('support-tickets.')->group(function () {
+        Route::get('/', [SupportTicketController::class, 'index'])->name('index');
+        Route::get('/{id}', [SupportTicketController::class, 'show'])->name('show');
+        Route::post('/', [SupportTicketController::class, 'store'])->name('store');
     });
 
 });

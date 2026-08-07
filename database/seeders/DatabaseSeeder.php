@@ -22,5 +22,6 @@ class DatabaseSeeder extends Seeder
         $this->call(PricingRuleSeeder::class);
         $this->call(PromoCodeSeeder::class);
         $this->call(TripCancellationReasonSeeder::class);
+        $this->call(SupportCategorySeeder::class);
     }
 }

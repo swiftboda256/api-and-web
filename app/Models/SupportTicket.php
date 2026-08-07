@@ -2,16 +2,31 @@
 
 namespace App\Models;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
+/**
+ * @property int $id
+ * @property string $ticket_number
+ * @property int $user_id
+ * @property int|null $trip_id
+ * @property int $category_id
+ * @property string $subject
+ * @property string $status
+ * @property string $priority
+ * @property int|null $assigned_to
+ * @property CarbonImmutable|null $resolved_at
+ * @property CarbonImmutable|null $created_at
+ * @property CarbonImmutable|null $updated_at
+ */
 class SupportTicket extends BaseModel
 {
     protected $fillable = [
         'ticket_number',
         'user_id',
         'trip_id',
-        'category',
+        'category_id',
         'subject',
         'status',
         'priority',
@@ -35,6 +50,14 @@ class SupportTicket extends BaseModel
     }
 
     /**
+     * @return BelongsTo<SupportCategory, $this>
+     */
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(SupportCategory::class);
+    }
+
+    /**
      * @return BelongsTo<Trip, $this>
      */
     public function trip(): BelongsTo
@@ -51,10 +74,10 @@ class SupportTicket extends BaseModel
     }
 
     /**
-     * @return HasMany<SupportTicketMessage, $this>
+     * @return HasOne<ChatRoom, $this>
      */
-    public function messages(): HasMany
+    public function chatRoom(): HasOne
     {
-        return $this->hasMany(SupportTicketMessage::class);
+        return $this->hasOne(ChatRoom::class);
     }
 }
