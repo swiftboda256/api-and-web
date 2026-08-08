@@ -48,14 +48,6 @@ class PricingRuleForm
                     ->required(),
                 DateTimePicker::make('effective_from'),
                 DateTimePicker::make('effective_to'),
-                Toggle::make('is_active')
-                    ->required(),
-                TextInput::make('created_by')
-                    ->numeric(),
-                TextInput::make('updated_by')
-                    ->numeric(),
-                TextInput::make('deleted_by')
-                    ->numeric(),
             ]);
     }
 }

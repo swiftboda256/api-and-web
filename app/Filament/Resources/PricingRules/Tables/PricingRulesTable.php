@@ -61,15 +61,17 @@ class PricingRulesTable
                     ->dateTime()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('created_by')
+                TextColumn::make('creator.name')
                     ->numeric()
                     ->sortable(),
-                TextColumn::make('updated_by')
+                TextColumn::make('updater.name')
                     ->numeric()
-                    ->sortable(),
-                TextColumn::make('deleted_by')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('deleter.name')
                     ->numeric()
-                    ->sortable(),
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('deleted_at')
                     ->dateTime()
                     ->sortable()
