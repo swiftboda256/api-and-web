@@ -23,4 +23,11 @@ class JoinWaitlistRequest extends FormRequest
             'phone' => ['nullable', 'string', 'max:255'],
         ];
     }
+
+    public function messages(): array
+    {
+        return [
+            'email.unique' => 'You already joined the waitlist.',
+        ];
+    }
 }
