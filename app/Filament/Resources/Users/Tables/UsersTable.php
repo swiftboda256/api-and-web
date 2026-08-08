@@ -93,7 +93,7 @@ class UsersTable
                     Action::make('sendCredentials')
                         ->label('Send Credentials')
                         ->icon(Heroicon::OutlinedKey)
-                        ->color('gray')
+                        ->color('warning')
                         ->requiresConfirmation()
                         ->modalDescription('This generates a new password, revokes all of this user\'s active sessions and API tokens, and emails them their new credentials.')
                         ->visible(fn (User $record): bool => $record->login_type === 'password' && filled($record->email))
