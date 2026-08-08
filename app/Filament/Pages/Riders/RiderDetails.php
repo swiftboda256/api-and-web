@@ -3,6 +3,7 @@
 namespace App\Filament\Pages\Riders;
 
 use App\Models\Document;
+use App\Models\Rating;
 use App\Models\Transaction;
 use App\Models\Trip;
 use App\Models\User;
@@ -164,6 +165,19 @@ class RiderDetails extends Page
             ->when($this->transactionsStatus !== '', fn ($query) => $query->where('status', $this->transactionsStatus))
             ->orderBy('created_at', $direction)
             ->paginate(10, pageName: 'transactionsPage');
+    }
+
+    /**
+     * @return LengthAwarePaginator<int, Rating>
+     */
+    #[Computed]
+    public function ratings(): LengthAwarePaginator
+    {
+        return Rating::query()
+            ->where('ratee_id', $this->recordId)
+            ->with(['rater', 'trip'])
+            ->orderByDesc('created_at')
+            ->paginate(10, pageName: 'ratingsPage');
     }
 
     /**

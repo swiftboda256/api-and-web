@@ -19,6 +19,7 @@
                         'kyc' => 'KYC',
                         'vehicle' => 'Vehicles',
                         'trips' => 'Trips',
+                        'ratings' => 'Ratings',
                         'transactions' => 'Transactions',
                         'security' => 'Security',
                         'account' => 'Account',
@@ -49,6 +50,10 @@
 
                     @case('trips')
                         @include('filament.pages.riders.tabs.trips')
+                        @break
+
+                    @case('ratings')
+                        @include('filament.pages.riders.tabs.ratings')
                         @break
 
                     @case('transactions')
