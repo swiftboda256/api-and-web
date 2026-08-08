@@ -2,9 +2,11 @@
 
 namespace App\Filament\Resources\PromoCodes\Schemas;
 
+use App\Models\VehicleType;
+use App\Models\Zone;
 use Filament\Forms\Components\DateTimePicker;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Schema;
 
 class PromoCodeForm
@@ -16,7 +18,11 @@ class PromoCodeForm
                 TextInput::make('code')
                     ->required(),
                 TextInput::make('description'),
-                TextInput::make('discount_type')
+                Select::make('discount_type')
+                    ->options([
+                        'fixed' => 'fixed',
+                        'percentage' => 'percentage',
+                    ])
                     ->required(),
                 TextInput::make('discount_value')
                     ->required()
@@ -29,18 +35,14 @@ class PromoCodeForm
                     ->numeric(),
                 TextInput::make('usage_limit_per_user')
                     ->numeric(),
-                TextInput::make('applicable_vehicle_types'),
-                TextInput::make('applicable_zone_ids'),
+                Select::make('applicable_vehicle_types')
+                    ->options(VehicleType::query()->pluck('name', 'id')),
+                Select::make('applicable_zone_ids')
+                    ->options(Zone::query()->pluck('name', 'id'))
+                    ->multiple()
+                    ->searchable(),
                 DateTimePicker::make('valid_from'),
                 DateTimePicker::make('valid_until'),
-                Toggle::make('is_active')
-                    ->required(),
-                TextInput::make('created_by')
-                    ->numeric(),
-                TextInput::make('updated_by')
-                    ->numeric(),
-                TextInput::make('deleted_by')
-                    ->numeric(),
             ]);
     }
 }

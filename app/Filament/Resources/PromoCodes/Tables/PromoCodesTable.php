@@ -2,13 +2,14 @@
 
 namespace App\Filament\Resources\PromoCodes\Tables;
 
+use App\Models\PromoCode;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ForceDeleteBulkAction;
 use Filament\Actions\RestoreBulkAction;
-use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Columns\ToggleColumn;
 use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
 
@@ -19,8 +20,7 @@ class PromoCodesTable
         return $table
             ->columns([
                 TextColumn::make('code')
-                    ->searchable(),
-                TextColumn::make('description')
+                    ->description(fn (PromoCode $record): ?string => $record->description)
                     ->searchable(),
                 TextColumn::make('discount_type')
                     ->searchable(),
@@ -45,8 +45,7 @@ class PromoCodesTable
                 TextColumn::make('valid_until')
                     ->dateTime()
                     ->sortable(),
-                IconColumn::make('is_active')
-                    ->boolean(),
+                ToggleColumn::make('is_active'),
                 TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()
@@ -55,15 +54,17 @@ class PromoCodesTable
                     ->dateTime()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('created_by')
+                TextColumn::make('creator.name')
                     ->numeric()
                     ->sortable(),
-                TextColumn::make('updated_by')
+                TextColumn::make('updater.name')
                     ->numeric()
-                    ->sortable(),
-                TextColumn::make('deleted_by')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('deleter.name')
                     ->numeric()
-                    ->sortable(),
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('deleted_at')
                     ->dateTime()
                     ->sortable()
