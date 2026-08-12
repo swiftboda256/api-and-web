@@ -28,5 +28,25 @@ class ConfigurationSeeder extends Seeder
                 'is_public' => false,
             ],
         );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'dispatch_radius_km'],
+            [
+                'value' => 50,
+                'group' => 'trip',
+                'description' => 'Radius in kilometers used to notify nearby riders when a trip is dispatched.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'search_radius_km'],
+            [
+                'value' => 50,
+                'group' => 'trip',
+                'description' => 'Radius in kilometers used when customers search for nearby riders and when riders search for nearby placed trips.',
+                'is_public' => false,
+            ],
+        );
     }
 }

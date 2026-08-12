@@ -2,6 +2,7 @@
 
 namespace App\Services\Trip;
 
+use App\Models\Configuration;
 use App\Models\RiderProfile;
 use App\Models\Transaction;
 use App\Models\Trip;
@@ -69,7 +70,7 @@ readonly class RiderTripService
         }
 
         $point = $riderProfile->current_location;
-        $radiusMeters = (float) config('trip.dispatch_radius_km') * 1000;
+        $radiusMeters = (float) Configuration::get('search_radius_km', 5) * 1000;
 
         return Trip::query()
             ->where('status', 'searching')

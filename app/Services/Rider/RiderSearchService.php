@@ -2,6 +2,7 @@
 
 namespace App\Services\Rider;
 
+use App\Models\Configuration;
 use App\Models\RiderProfile;
 use Clickbar\Magellan\Data\Geometries\Point;
 use Clickbar\Magellan\Database\PostgisFunctions\ST;
@@ -18,7 +19,7 @@ readonly class RiderSearchService
     public function nearby(array $filters): Collection
     {
         $point = Point::makeGeodetic((float) $filters['latitude'], (float) $filters['longitude']);
-        $radiusMeters = (float) ($filters['radius_km'] ?? config('trip.dispatch_radius_km')) * 1000;
+        $radiusMeters = (float) ($filters['radius_km'] ?? Configuration::get('search_radius_km', 5)) * 1000;
         $distance = ST::distanceSphere('current_location', $point);
 
         return RiderProfile::query()

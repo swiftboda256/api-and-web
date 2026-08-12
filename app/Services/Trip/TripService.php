@@ -2,6 +2,7 @@
 
 namespace App\Services\Trip;
 
+use App\Models\Configuration;
 use App\Models\DeliveryDetails;
 use App\Models\PricingRule;
 use App\Models\PromoCode;
@@ -221,7 +222,7 @@ readonly class TripService
 
     private function dispatchToNearbyRiders(Trip $trip, Point $pickup, int $vehicleTypeId): void
     {
-        $radiusMeters = (float) config('trip.dispatch_radius_km') * 1000;
+        $radiusMeters = (float) Configuration::get('dispatch_radius_km', 5) * 1000;
 
         $riderProfiles = RiderProfile::query()
             ->where('availability_status', 'online')
