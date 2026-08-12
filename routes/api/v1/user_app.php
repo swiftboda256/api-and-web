@@ -38,7 +38,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::prefix('trips')->name('trips.')->group(function () {
-        Route::get('riders', [RiderController::class, 'nearbyRiders'])->name('riders');
+        Route::get('nearby-riders', [RiderController::class, 'nearbyRiders'])->name('riders');
         Route::get('/', [TripController::class, 'index'])->name('index');
         Route::get('/{trip}', [TripController::class, 'show'])->name('show');
         Route::post('estimate', [TripController::class, 'estimateTrip'])->name('estimate');
