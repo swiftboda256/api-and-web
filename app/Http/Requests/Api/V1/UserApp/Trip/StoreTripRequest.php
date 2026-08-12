@@ -25,6 +25,7 @@ class StoreTripRequest extends FormRequest
             'dropoff_latitude' => ['required', 'numeric', 'between:-90,90'],
             'dropoff_longitude' => ['required', 'numeric', 'between:-180,180'],
             'dropoff_address' => ['nullable', 'string', 'max:255'],
+            'distance_km' => ['required', 'numeric', 'min:0'],
             'payment_method' => ['required', 'in:wallet,cash,mobile_money,card'],
             'promo_code' => ['nullable', 'string', 'max:50'],
             'recipient_name' => ['required_if:type,delivery', 'string', 'max:255'],

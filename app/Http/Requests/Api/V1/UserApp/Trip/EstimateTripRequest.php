@@ -23,6 +23,7 @@ class EstimateTripRequest extends FormRequest
             'pickup_longitude' => ['required', 'numeric', 'between:-180,180'],
             'dropoff_latitude' => ['required', 'numeric', 'between:-90,90'],
             'dropoff_longitude' => ['required', 'numeric', 'between:-180,180'],
+            'distance_km' => ['required', 'numeric', 'min:0'],
             'promo_code' => ['nullable', 'string', 'max:50'],
         ];
     }

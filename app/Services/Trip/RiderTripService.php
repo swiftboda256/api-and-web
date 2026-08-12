@@ -5,8 +5,10 @@ namespace App\Services\Trip;
 use App\Models\RiderProfile;
 use App\Models\Transaction;
 use App\Models\Trip;
+use App\Models\TripLocation;
 use App\Models\User;
 use App\Models\Wallet;
+use Clickbar\Magellan\Data\Geometries\Point;
 use Clickbar\Magellan\Database\PostgisFunctions\ST;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -185,6 +187,30 @@ readonly class RiderTripService
 
             return $trip->fresh()->load(['vehicleType', 'fareBreakdown', 'deliveryDetails', 'customer']);
         });
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    public function logLocation(User $user, int $tripId, array $data): TripLocation
+    {
+        $riderProfile = $this->riderProfile($user);
+        $trip = $this->ownRide($user, $tripId);
+
+        if (! in_array($trip->status, self::ACTIVE_STATUSES, true)) {
+            throw ValidationException::withMessages([
+                'status' => 'Location can only be logged for an active ride.',
+            ]);
+        }
+
+        return TripLocation::query()->create([
+            'trip_id' => $trip->id,
+            'rider_profile_id' => $riderProfile->id,
+            'location' => Point::makeGeodetic((float) $data['latitude'], (float) $data['longitude']),
+            'heading' => $data['heading'] ?? null,
+            'speed' => $data['speed'] ?? null,
+            'recorded_at' => $data['recorded_at'] ?? now(),
+        ]);
     }
 
     private function settleWalletPayment(Trip $trip, RiderProfile $riderProfile, float $finalFare, float $riderEarning): void

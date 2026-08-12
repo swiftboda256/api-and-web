@@ -61,12 +61,11 @@ readonly class TripService
     public function estimate(User $user, array $data): array
     {
         $pickup = Point::makeGeodetic((float) $data['pickup_latitude'], (float) $data['pickup_longitude']);
-        $dropoff = Point::makeGeodetic((float) $data['dropoff_latitude'], (float) $data['dropoff_longitude']);
 
         $zone = $this->resolveZone($pickup);
         $pricingRule = $this->resolvePricingRule($zone->id, (int) $data['vehicle_type_id']);
 
-        $distanceKm = $this->distanceKm($pickup, $dropoff);
+        $distanceKm = (float) $data['distance_km'];
         $durationMinutes = $this->durationMinutes($distanceKm);
 
         $fare = $this->calculateFare($pricingRule, $distanceKm, $durationMinutes);
@@ -108,7 +107,7 @@ readonly class TripService
         $zone = $this->resolveZone($pickup);
         $pricingRule = $this->resolvePricingRule($zone->id, (int) $data['vehicle_type_id']);
 
-        $distanceKm = $this->distanceKm($pickup, $dropoff);
+        $distanceKm = (float) $data['distance_km'];
         $durationMinutes = $this->durationMinutes($distanceKm);
 
         $fare = $this->calculateFare($pricingRule, $distanceKm, $durationMinutes);
@@ -293,15 +292,6 @@ readonly class TripService
         }
 
         return $pricingRule;
-    }
-
-    private function distanceKm(Point $from, Point $to): float
-    {
-        $meters = (float) DB::query()
-            ->select([ST::distanceSphere($from, $to)->as('distance')])
-            ->value('distance');
-
-        return round($meters / 1000, 2);
     }
 
     private function durationMinutes(float $distanceKm): int
