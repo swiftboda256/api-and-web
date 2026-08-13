@@ -260,6 +260,11 @@ readonly class TripService
         ]);
     }
 
+    public function dispatchDueTrip(Trip $trip): void
+    {
+        $this->dispatchToNearbyRiders($trip, $trip->pickup_location, (int) $trip->vehicle_type_id);
+    }
+
     private function dispatchToNearbyRiders(Trip $trip, Point $pickup, int $vehicleTypeId): void
     {
         $radiusMeters = (float) Configuration::get('dispatch_radius_km', 5) * 1000;
