@@ -41,6 +41,14 @@ class RideController extends Controller
         return self::success(new RideResource($riderTripService->accept($user, $trip)));
     }
 
+    public function arrive(Request $request, int $trip, RiderTripService $riderTripService): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        return self::success(new RideResource($riderTripService->arrive($user, $trip)));
+    }
+
     public function start(Request $request, int $trip, RiderTripService $riderTripService): JsonResponse
     {
         /** @var User $user */

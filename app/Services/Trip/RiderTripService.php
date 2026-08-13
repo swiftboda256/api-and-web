@@ -8,16 +8,24 @@ use App\Models\Transaction;
 use App\Models\Trip;
 use App\Models\TripLocation;
 use App\Models\User;
+use App\Models\UserDevice;
 use App\Models\Wallet;
+use App\Services\Push\FcmGateway;
 use Clickbar\Magellan\Data\Geometries\Point;
 use Clickbar\Magellan\Database\PostgisFunctions\ST;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 readonly class RiderTripService
 {
     private const array ACTIVE_STATUSES = ['accepted', 'arrived', 'in_progress'];
+
+    public function __construct(
+        private FcmGateway $pushGateway,
+    ) {}
 
     /**
      * @param  array<string, mixed>  $filters
@@ -116,6 +124,35 @@ readonly class RiderTripService
             ->findOrFail($tripId);
     }
 
+    public function arrive(User $user, int $tripId): Trip
+    {
+        $trip = $this->ownRide($user, $tripId);
+
+        if ($trip->status !== 'accepted') {
+            throw ValidationException::withMessages([
+                'status' => 'This ride cannot be marked as arrived from its current status.',
+            ]);
+        }
+
+        $trip->update([
+            'status' => 'arrived',
+            'arrived_at' => now(),
+        ]);
+
+        $trip = $trip->refresh()->load(['vehicleType', 'fareBreakdown', 'deliveryDetails', 'customer.devices']);
+
+        try {
+            $this->notifyCustomerOfArrival($trip);
+        } catch (Throwable $e) {
+            Log::error('trip.arrival_notification_failed', [
+                'trip_id' => $trip->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $trip;
+    }
+
     public function start(User $user, int $tripId): Trip
     {
         $trip = $this->ownRide($user, $tripId);
@@ -212,6 +249,26 @@ readonly class RiderTripService
             'speed' => $data['speed'] ?? null,
             'recorded_at' => $data['recorded_at'] ?? now(),
         ]);
+    }
+
+    private function notifyCustomerOfArrival(Trip $trip): void
+    {
+        $tokens = $trip->customer->devices
+            ->filter(fn (UserDevice $device): bool => $device->active && filled($device->fcm_token))
+            ->map(fn (UserDevice $device): string => (string) $device->fcm_token)
+            ->unique()
+            ->values()
+            ->all();
+
+        $this->pushGateway->sendToTokens(
+            array_values($tokens),
+            'Your rider has arrived',
+            'Your rider is waiting at the pickup point.',
+            [
+                'trip_id' => (string) $trip->id,
+                'status' => 'arrived',
+            ],
+        );
     }
 
     private function settleWalletPayment(Trip $trip, RiderProfile $riderProfile, float $finalFare, float $riderEarning): void
