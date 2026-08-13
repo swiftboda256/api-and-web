@@ -6,8 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\UserApp\Trip\CancelTripRequest;
 use App\Http\Requests\Api\V1\UserApp\Trip\EstimateTripRequest;
 use App\Http\Requests\Api\V1\UserApp\Trip\IndexTripRequest;
+use App\Http\Requests\Api\V1\UserApp\Trip\RateTripRequest;
 use App\Http\Requests\Api\V1\UserApp\Trip\ScheduleTripRequest;
 use App\Http\Requests\Api\V1\UserApp\Trip\StoreTripRequest;
+use App\Http\Resources\Api\V1\UserApp\RatingResource;
 use App\Http\Resources\Api\V1\UserApp\TripCollection;
 use App\Http\Resources\Api\V1\UserApp\TripEstimateResource;
 use App\Http\Resources\Api\V1\UserApp\TripResource;
@@ -75,5 +77,15 @@ class TripController extends Controller
         $cancelledTrip = $tripService->cancel($user, $trip, $request->validated('cancellation_reason_id'));
 
         return self::success(new TripResource($cancelledTrip));
+    }
+
+    public function rateRider(RateTripRequest $request, int $trip, TripService $tripService): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $rating = $tripService->rateRider($user, $trip, $request->validated());
+
+        return self::success(new RatingResource($rating), status: 201);
     }
 }

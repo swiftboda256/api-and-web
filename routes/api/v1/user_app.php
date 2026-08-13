@@ -47,6 +47,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('order-delivery', [TripController::class, 'store'])->name('order-delivery');
         Route::patch('cancel-ride/{trip}', [TripController::class, 'cancel'])->name('cancel-ride');
         Route::patch('cancel-delivery/{trip}', [TripController::class, 'cancel'])->name('cancel-delivery');
+        Route::post('/{trip}/rate', [TripController::class, 'rateRider'])->name('rate-rider')->whereNumber('trip');
     });
 
     Route::prefix('wallet')->name('wallet.')->group(function () {

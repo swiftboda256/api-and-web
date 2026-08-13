@@ -7,6 +7,7 @@ use App\Models\DeliveryDetails;
 use App\Models\PricingRule;
 use App\Models\PromoCode;
 use App\Models\PromoCodeRedemption;
+use App\Models\Rating;
 use App\Models\RiderProfile;
 use App\Models\Trip;
 use App\Models\TripFareBreakdown;
@@ -218,6 +219,45 @@ readonly class TripService
         ]);
 
         return $trip->refresh()->load(['vehicleType', 'fareBreakdown', 'deliveryDetails', 'cancellationReason']);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    public function rateRider(User $user, int $tripId, array $data): Rating
+    {
+        $trip = Trip::query()
+            ->where('customer_id', $user->id)
+            ->where('id', $tripId)
+            ->firstOrFail();
+
+        if ($trip->status !== 'completed') {
+            throw ValidationException::withMessages([
+                'trip' => 'Only completed trips can be rated.',
+            ]);
+        }
+
+        if ($trip->rider_id === null) {
+            throw ValidationException::withMessages([
+                'trip' => 'This trip has no assigned rider to rate.',
+            ]);
+        }
+
+        if (Rating::query()->where('trip_id', $trip->id)->where('rater_id', $user->id)->exists()) {
+            throw ValidationException::withMessages([
+                'trip' => 'You have already rated this trip.',
+            ]);
+        }
+
+        return Rating::query()->create([
+            'trip_id' => $trip->id,
+            'rater_id' => $user->id,
+            'ratee_id' => $trip->rider_id,
+            'rater_role' => 'customer',
+            'score' => $data['score'],
+            'comment' => $data['comment'] ?? null,
+            'tags' => $data['tags'] ?? null,
+        ]);
     }
 
     private function dispatchToNearbyRiders(Trip $trip, Point $pickup, int $vehicleTypeId): void
