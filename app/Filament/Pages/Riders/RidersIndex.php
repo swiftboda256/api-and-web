@@ -4,6 +4,7 @@ namespace App\Filament\Pages\Riders;
 
 use App\Models\User;
 use App\Models\VehicleType;
+use App\Models\Zone;
 use BackedEnum;
 use BezhanSalleh\FilamentShield\Traits\HasPageShield;
 use Filament\Pages\Page;
@@ -87,6 +88,15 @@ class RidersIndex extends Page implements HasTable
                         $data['value'] ?? null,
                         fn (Builder $query, $value) => $query->whereHas(
                             'riderProfile.vehicle', fn (Builder $query) => $query->where('vehicle_type_id', $value)
+                        ),
+                    )),
+                SelectFilter::make('home_zone_id')
+                    ->label('Zone')
+                    ->options(fn (): array => Zone::query()->orderBy('name')->pluck('name', 'id')->all())
+                    ->query(fn (Builder $query, array $data): Builder => $query->when(
+                        $data['value'] ?? null,
+                        fn (Builder $query, $value) => $query->whereHas(
+                            'riderProfile', fn (Builder $query) => $query->where('home_zone_id', $value)
                         ),
                     )),
             ])
