@@ -47,6 +47,16 @@ readonly class RiderProfileService
                 $riderProfile->last_location_at = now();
             }
 
+            if (! empty($data['availability_status'])) {
+                if ($riderProfile->availability_status === 'on_trip') {
+                    throw ValidationException::withMessages([
+                        'availability_status' => 'You cannot change your availability while on an active trip.',
+                    ]);
+                }
+
+                $riderProfile->availability_status = $data['availability_status'];
+            }
+
             $documentUploaded = false;
 
             foreach (self::DOCUMENT_TYPES as $type) {

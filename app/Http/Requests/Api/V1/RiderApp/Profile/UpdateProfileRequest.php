@@ -23,6 +23,7 @@ class UpdateProfileRequest extends FormRequest
             'other_name' => ['nullable', 'string', 'max:255'],
             'email' => ['nullable', 'email', 'max:255', Rule::unique('users', 'email')->ignore($this->user()?->id)],
             'avatar' => ['sometimes', 'file', 'image', 'mimes:jpg,jpeg,png', 'max:2048'],
+            'availability_status' => ['sometimes', 'nullable', Rule::in(['online', 'offline'])],
 
             'national_id_number' => ['sometimes', 'nullable', 'string', 'max:255'],
             'license_number' => ['sometimes', 'nullable', 'string', 'max:255'],
