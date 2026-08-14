@@ -130,9 +130,20 @@ readonly class RiderTripService
 
         $riderProfile->update(['availability_status' => 'on_trip']);
 
-        return Trip::query()
-            ->with(['vehicleType', 'fareBreakdown', 'deliveryDetails', 'customer'])
+        $trip = Trip::query()
+            ->with(['vehicleType', 'fareBreakdown', 'deliveryDetails', 'customer.devices'])
             ->findOrFail($tripId);
+
+        try {
+            $this->notifyCustomerOfAcceptance($trip, $user);
+        } catch (Throwable $e) {
+            Log::error('trip.acceptance_notification_failed', [
+                'trip_id' => $trip->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $trip;
     }
 
     public function arrive(User $user, int $tripId): Trip
@@ -287,6 +298,26 @@ readonly class RiderTripService
         }
 
         return Storage::disk('public')->url($path);
+    }
+
+    private function notifyCustomerOfAcceptance(Trip $trip, User $rider): void
+    {
+        $tokens = $trip->customer->devices
+            ->filter(fn (UserDevice $device): bool => $device->active && filled($device->fcm_token))
+            ->map(fn (UserDevice $device): string => (string) $device->fcm_token)
+            ->unique()
+            ->values()
+            ->all();
+
+        $this->pushGateway->sendToTokens(
+            array_values($tokens),
+            'Your rider is on the way',
+            "{$rider->name} has accepted your trip and is heading to the pickup point.",
+            [
+                'trip_id' => (string) $trip->id,
+                'status' => 'accepted',
+            ],
+        );
     }
 
     private function notifyCustomerOfArrival(Trip $trip): void
