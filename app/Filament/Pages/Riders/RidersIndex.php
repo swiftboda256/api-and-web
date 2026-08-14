@@ -3,6 +3,7 @@
 namespace App\Filament\Pages\Riders;
 
 use App\Models\User;
+use App\Models\VehicleType;
 use BackedEnum;
 use BezhanSalleh\FilamentShield\Traits\HasPageShield;
 use Filament\Pages\Page;
@@ -11,7 +12,9 @@ use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class RidersIndex extends Page implements HasTable
 {
@@ -31,7 +34,7 @@ class RidersIndex extends Page implements HasTable
     public function table(Table $table): Table
     {
         return $table
-            ->query(User::query()->whereHas('riderProfile')->with(['riderProfile.homeZone']))
+            ->query(User::query()->whereHas('riderProfile')->with(['riderProfile.homeZone', 'riderProfile.vehicle.vehicleType']))
             ->columns([
                 ImageColumn::make('avatar_url')
                     ->label('')
@@ -71,6 +74,21 @@ class RidersIndex extends Page implements HasTable
                 TextColumn::make('riderProfile.total_trips')
                     ->label('Total trips')
                     ->numeric(),
+                TextColumn::make('riderProfile.vehicle.vehicleType.name')
+                    ->label('Vehicle')
+                    ->placeholder('—')
+                    ->description(fn (User $record): ?string => $record->riderProfile?->vehicle?->plate_number),
+            ])
+            ->filters([
+                SelectFilter::make('vehicle_type_id')
+                    ->label('Vehicle type')
+                    ->options(fn (): array => VehicleType::query()->orderBy('name')->pluck('name', 'id')->all())
+                    ->query(fn (Builder $query, array $data): Builder => $query->when(
+                        $data['value'] ?? null,
+                        fn (Builder $query, $value) => $query->whereHas(
+                            'riderProfile.vehicle', fn (Builder $query) => $query->where('vehicle_type_id', $value)
+                        ),
+                    )),
             ])
             ->recordUrl(fn (User $record): string => RiderDetails::getUrl(['record' => $record->id]))
             ->defaultSort('created_at', 'desc');
