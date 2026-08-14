@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\RiderApp;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\RiderApp\Ride\CancelRideRequest;
+use App\Http\Requests\Api\V1\RiderApp\Ride\EndRideRequest;
 use App\Http\Requests\Api\V1\RiderApp\Ride\IndexRideRequest;
 use App\Http\Requests\Api\V1\RiderApp\Ride\LogRideLocationRequest;
 use App\Http\Requests\Api\V1\RiderApp\Ride\NearbyRidesRequest;
@@ -31,6 +32,14 @@ class RideController extends Controller
         $user = $request->user();
 
         return self::success(new RideCollection($riderTripService->nearby($user, $request->validated())));
+    }
+
+    public function show(Request $request, int $trip, RiderTripService $riderTripService): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        return self::success(new RideResource($riderTripService->show($user, $trip)));
     }
 
     public function accept(Request $request, int $trip, RiderTripService $riderTripService): JsonResponse
@@ -65,12 +74,12 @@ class RideController extends Controller
         return self::success(new RideResource($riderTripService->cancel($user, $trip, $request->validated('cancellation_reason_id'))));
     }
 
-    public function end(Request $request, int $trip, RiderTripService $riderTripService): JsonResponse
+    public function end(EndRideRequest $request, int $trip, RiderTripService $riderTripService): JsonResponse
     {
         /** @var User $user */
         $user = $request->user();
 
-        return self::success(new RideResource($riderTripService->end($user, $trip)));
+        return self::success(new RideResource($riderTripService->end($user, $trip, $request->file('proof_of_delivery_photo'))));
     }
 
     public function logLocation(LogRideLocationRequest $request, int $trip, RiderTripService $riderTripService): JsonResponse

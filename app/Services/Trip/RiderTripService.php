@@ -13,9 +13,11 @@ use App\Models\Wallet;
 use App\Services\Push\FcmGateway;
 use Clickbar\Magellan\Data\Geometries\Point;
 use Clickbar\Magellan\Database\PostgisFunctions\ST;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Throwable;
 
@@ -88,6 +90,15 @@ readonly class RiderTripService
             ->orderBy(ST::distanceSphere('pickup_location', $point))
             ->with(['vehicleType', 'fareBreakdown', 'deliveryDetails', 'customer'])
             ->paginate((int) ($filters['per_page'] ?? 15));
+    }
+
+    public function show(User $user, int $tripId): Trip
+    {
+        return Trip::query()
+            ->where('rider_id', $user->id)
+            ->where('id', $tripId)
+            ->with(['customer', 'vehicleType', 'fareBreakdown', 'deliveryDetails', 'cancellationReason'])
+            ->firstOrFail();
     }
 
     public function accept(User $user, int $tripId): Trip
@@ -194,10 +205,10 @@ readonly class RiderTripService
         return $trip->refresh()->load(['vehicleType', 'fareBreakdown', 'deliveryDetails', 'customer', 'cancellationReason']);
     }
 
-    public function end(User $user, int $tripId): Trip
+    public function end(User $user, int $tripId, ?UploadedFile $proofOfDeliveryPhoto = null): Trip
     {
         $riderProfile = $this->riderProfile($user);
-        $trip = $this->ownRide($user, $tripId)->load('fareBreakdown');
+        $trip = $this->ownRide($user, $tripId)->load(['fareBreakdown', 'deliveryDetails']);
 
         if (! in_array($trip->status, self::ACTIVE_STATUSES, true)) {
             throw ValidationException::withMessages([
@@ -205,7 +216,17 @@ readonly class RiderTripService
             ]);
         }
 
-        return DB::transaction(function () use ($trip, $riderProfile): Trip {
+        if ($trip->type === 'delivery' && ! $proofOfDeliveryPhoto) {
+            throw ValidationException::withMessages([
+                'proof_of_delivery_photo' => 'A photo of the delivered package is required to complete this delivery.',
+            ]);
+        }
+
+        $proofOfDeliveryPhotoUrl = $proofOfDeliveryPhoto
+            ? $this->storeProofOfDeliveryPhoto($trip, $proofOfDeliveryPhoto)
+            : null;
+
+        return DB::transaction(function () use ($trip, $riderProfile, $proofOfDeliveryPhotoUrl): Trip {
             $finalFare = (float) $trip->estimated_fare;
             $riderEarning = $trip->fareBreakdown !== null ? (float) $trip->fareBreakdown->rider_earning : $finalFare;
 
@@ -214,6 +235,10 @@ readonly class RiderTripService
                 'completed_at' => now(),
                 'final_fare' => $finalFare,
             ]);
+
+            if ($proofOfDeliveryPhotoUrl !== null) {
+                $trip->deliveryDetails?->update(['proof_of_delivery_photo' => $proofOfDeliveryPhotoUrl]);
+            }
 
             if ($trip->payment_method === 'wallet') {
                 $this->settleWalletPayment($trip, $riderProfile, $finalFare, $riderEarning);
@@ -249,6 +274,19 @@ readonly class RiderTripService
             'speed' => $data['speed'] ?? null,
             'recorded_at' => $data['recorded_at'] ?? now(),
         ]);
+    }
+
+    private function storeProofOfDeliveryPhoto(Trip $trip, UploadedFile $file): string
+    {
+        $path = $file->store("deliveries/{$trip->id}", 'public');
+
+        if ($path === false) {
+            throw ValidationException::withMessages([
+                'proof_of_delivery_photo' => 'Failed to upload proof of delivery photo.',
+            ]);
+        }
+
+        return Storage::disk('public')->url($path);
     }
 
     private function notifyCustomerOfArrival(Trip $trip): void

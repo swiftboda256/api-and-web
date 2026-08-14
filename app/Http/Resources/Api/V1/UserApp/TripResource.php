@@ -71,6 +71,7 @@ class TripResource extends JsonResource
                 'package_size' => $this->deliveryDetails->package_size,
                 'package_weight_kg' => $this->deliveryDetails->package_weight_kg,
                 'requires_signature' => $this->deliveryDetails->requires_signature,
+                'proof_of_delivery_photo' => $this->deliveryDetails->proof_of_delivery_photo,
             ]),
             'cancellation_reason' => $this->whenLoaded('cancellationReason', fn () => $this->cancellationReason?->label),
             'requested_at' => $this->requested_at,

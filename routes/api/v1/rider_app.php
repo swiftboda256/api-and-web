@@ -36,6 +36,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('rides')->name('rides.')->group(function () {
         Route::get('/', [RideController::class, 'index'])->name('index');
         Route::get('/new', [RideController::class, 'newTrips'])->name('new');
+        Route::get('/{trip}', [RideController::class, 'show'])->name('show')->whereNumber('trip');
         Route::patch('{trip}/accept', [RideController::class, 'accept'])->name('accept');
         Route::patch('{trip}/arrive', [RideController::class, 'arrive'])->name('arrive')->whereNumber('trip');
         Route::patch('{trip}/start', [RideController::class, 'start'])->name('start');
