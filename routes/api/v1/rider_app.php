@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\RiderApp\ProfileController;
 use App\Http\Controllers\Api\V1\RiderApp\RideController;
 use App\Http\Controllers\Api\V1\RiderApp\SupportCategoryController;
 use App\Http\Controllers\Api\V1\RiderApp\SupportTicketController;
+use App\Http\Controllers\Api\V1\RiderApp\TripCancellationReasonController;
 use App\Http\Controllers\Api\V1\RiderApp\VehicleTypeController;
 use App\Http\Controllers\Api\V1\RiderApp\WalletController;
 
@@ -34,6 +35,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::prefix('rides')->name('rides.')->group(function () {
+        Route::get('cancellation-reasons', [TripCancellationReasonController::class, 'index'])->name('cancellation-reasons');
         Route::get('/', [RideController::class, 'index'])->name('index');
         Route::get('/new', [RideController::class, 'newTrips'])->name('new');
         Route::get('/{trip}', [RideController::class, 'show'])->name('show')->whereNumber('trip');

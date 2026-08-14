@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\V1\UserApp\ProfileController;
 use App\Http\Controllers\Api\V1\UserApp\RiderController;
 use App\Http\Controllers\Api\V1\UserApp\SupportCategoryController;
 use App\Http\Controllers\Api\V1\UserApp\SupportTicketController;
+use App\Http\Controllers\Api\V1\UserApp\TripCancellationReasonController;
 use App\Http\Controllers\Api\V1\UserApp\TripController;
 use App\Http\Controllers\Api\V1\UserApp\WalletController;
 use Illuminate\Support\Facades\Route;
@@ -38,6 +39,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::prefix('trips')->name('trips.')->group(function () {
+        Route::get('cancellation-reasons', [TripCancellationReasonController::class, 'index'])->name('cancellation-reasons');
         Route::get('nearby-riders', [RiderController::class, 'nearbyRiders'])->name('riders');
         Route::get('/', [TripController::class, 'index'])->name('index');
         Route::get('/{trip}', [TripController::class, 'show'])->name('show');
