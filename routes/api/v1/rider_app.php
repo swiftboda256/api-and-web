@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\V1\RiderApp\SupportTicketController;
 use App\Http\Controllers\Api\V1\RiderApp\TripCancellationReasonController;
 use App\Http\Controllers\Api\V1\RiderApp\VehicleTypeController;
 use App\Http\Controllers\Api\V1\RiderApp\WalletController;
+use App\Http\Controllers\Api\V1\RiderApp\ZoneController;
 
 Route::prefix('auth')->name('auth.')->group(function () {
     Route::post('login', [AuthController::class, 'login'])->name('otp.request');
@@ -23,6 +24,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('profile', [ProfileController::class, 'update'])->name('profile.update');
 
     Route::get('vehicle-types', [VehicleTypeController::class, 'index'])->name('vehicle-types');
+    Route::get('zones', [ZoneController::class, 'index'])->name('zones');
+
 
     Route::prefix('wallet')->name('wallet.')->group(function () {
         Route::post('/', [WalletController::class, 'store'])->name('store');
