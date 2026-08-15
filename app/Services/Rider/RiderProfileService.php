@@ -40,6 +40,7 @@ readonly class RiderProfileService
                 'license_expiry_at',
                 'date_of_birth',
                 'gender',
+                'home_zone_id',
             ]));
 
             if (! empty($data['latitude']) && ! empty($data['longitude'])) {
