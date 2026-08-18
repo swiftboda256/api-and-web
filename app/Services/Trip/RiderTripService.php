@@ -238,7 +238,7 @@ readonly class RiderTripService
             : null;
 
         return DB::transaction(function () use ($trip, $riderProfile, $proofOfDeliveryPhotoUrl): Trip {
-            $finalFare = (float) $trip->estimated_fare;
+            $finalFare = $this->roundFare((float) $trip->estimated_fare);
             $riderEarning = $trip->fareBreakdown !== null ? (float) $trip->fareBreakdown->rider_earning : $finalFare;
 
             $trip->update([
@@ -253,6 +253,8 @@ readonly class RiderTripService
 
             if ($trip->payment_method === 'wallet') {
                 $this->settleWalletPayment($trip, $riderProfile, $finalFare, $riderEarning);
+            } elseif ($trip->payment_method === 'cash') {
+                $this->settleCashPayment($trip, $riderProfile, $finalFare, $riderEarning);
             }
 
             $riderProfile->increment('total_trips');
@@ -285,6 +287,15 @@ readonly class RiderTripService
             'speed' => $data['speed'] ?? null,
             'recorded_at' => $data['recorded_at'] ?? now(),
         ]);
+    }
+
+    private function roundFare(float $fare): float
+    {
+        if (! Configuration::get('round_fare_to_nearest_500', false)) {
+            return $fare;
+        }
+
+        return floor($fare / 500) * 500;
     }
 
     private function storeProofOfDeliveryPhoto(Trip $trip, UploadedFile $file): string
@@ -390,6 +401,39 @@ readonly class RiderTripService
             'reference_type' => Trip::class,
             'reference_id' => $trip->id,
             'status' => $riderWallet ? 'completed' : 'pending',
+        ]);
+
+        $trip->update(['payment_status' => 'paid']);
+    }
+
+    private function settleCashPayment(Trip $trip, RiderProfile $riderProfile, float $finalFare, float $riderEarning): void
+    {
+        Transaction::query()->create([
+            'user_id' => $trip->customer_id,
+            'wallet_id' => null,
+            'method' => 'cash',
+            'direction' => 'debit',
+            'transaction_type' => 'trip_payment',
+            'amount' => $finalFare,
+            'currency_code' => $trip->currency_code,
+            'narration' => "Cash payment for trip {$trip->trip_number}",
+            'reference_type' => Trip::class,
+            'reference_id' => $trip->id,
+            'status' => 'completed',
+        ]);
+
+        Transaction::query()->create([
+            'user_id' => $riderProfile->user_id,
+            'wallet_id' => null,
+            'method' => 'cash',
+            'direction' => 'credit',
+            'transaction_type' => 'trip_payout',
+            'amount' => $riderEarning,
+            'currency_code' => $trip->currency_code,
+            'narration' => "Cash payout for trip {$trip->trip_number}",
+            'reference_type' => Trip::class,
+            'reference_id' => $trip->id,
+            'status' => 'completed',
         ]);
 
         $trip->update(['payment_status' => 'paid']);

@@ -19,10 +19,9 @@ class ConfigurationsTable
         return $table
             ->columns([
                 TextColumn::make('key')
+                    ->description(fn ($record) => $record->description)
                     ->searchable(),
                 TextColumn::make('group')
-                    ->searchable(),
-                TextColumn::make('description')
                     ->searchable(),
                 IconColumn::make('is_public')
                     ->boolean(),
@@ -34,15 +33,14 @@ class ConfigurationsTable
                     ->dateTime()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('created_by')
-                    ->numeric()
+                TextColumn::make('creator.name')
                     ->sortable(),
-                TextColumn::make('updated_by')
-                    ->numeric()
-                    ->sortable(),
-                TextColumn::make('deleted_by')
-                    ->numeric()
-                    ->sortable(),
+                TextColumn::make('updater.name')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('deleter.name')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('deleted_at')
                     ->dateTime()
                     ->sortable()

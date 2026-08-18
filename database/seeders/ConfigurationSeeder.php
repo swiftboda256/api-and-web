@@ -48,5 +48,15 @@ class ConfigurationSeeder extends Seeder
                 'is_public' => false,
             ],
         );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'round_fare_to_nearest_500'],
+            [
+                'value' => true,
+                'group' => 'trip',
+                'description' => 'When true, a trip\'s final fare is rounded down to the nearest 500 (e.g. 2700 becomes 2500) before payment is settled.',
+                'is_public' => false,
+            ],
+        );
     }
 }
