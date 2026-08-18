@@ -14,19 +14,19 @@ class PricingRuleSeeder extends Seeder
         $rates = [
             'motorcycle' => [
                 'base_fare' => 1000,
-                'per_km_rate' => 500,
-                'per_minute_rate' => 100,
-                'minimum_fare' => 2000,
-                'cancellation_fee' => 500,
-                'commission_rate' => 20,
+                'per_km_rate' => 750,
+                'per_minute_rate' => 0,
+                'minimum_fare' => 1000,
+                'cancellation_fee' => 0,
+                'commission_rate' => 9,
             ],
             'car' => [
-                'base_fare' => 2500,
-                'per_km_rate' => 900,
-                'per_minute_rate' => 150,
-                'minimum_fare' => 5000,
-                'cancellation_fee' => 1000,
-                'commission_rate' => 20,
+                'base_fare' => 1000,
+                'per_km_rate' => 750,
+                'per_minute_rate' => 0,
+                'minimum_fare' => 1000,
+                'cancellation_fee' => 0,
+                'commission_rate' => 9,
             ],
         ];
 
