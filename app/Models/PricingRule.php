@@ -20,6 +20,7 @@ class PricingRule extends BaseModel
         'effective_from',
         'effective_to',
         'is_active',
+        'charge_cancellations',
     ];
 
     protected function casts(): array
