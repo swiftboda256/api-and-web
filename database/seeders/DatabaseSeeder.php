@@ -21,6 +21,7 @@ class DatabaseSeeder extends Seeder
         $this->call(ZoneSeeder::class);
         $this->call(RiderSeeder::class);
         $this->call(PricingRuleSeeder::class);
+        $this->call(SurgePricingScheduleSeeder::class);
         $this->call(PromoCodeSeeder::class);
         $this->call(TripCancellationReasonSeeder::class);
         $this->call(SupportCategorySeeder::class);

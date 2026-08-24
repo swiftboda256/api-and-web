@@ -10,6 +10,7 @@ use App\Models\TripLocation;
 use App\Models\User;
 use App\Models\UserDevice;
 use App\Models\Wallet;
+use App\Services\Checkout\CheckoutService;
 use App\Services\Push\FcmGateway;
 use Clickbar\Magellan\Data\Geometries\Point;
 use Clickbar\Magellan\Database\PostgisFunctions\ST;
@@ -27,6 +28,7 @@ readonly class RiderTripService
 
     public function __construct(
         private FcmGateway $pushGateway,
+        private CheckoutService $checkout,
     ) {}
 
     /**
@@ -219,7 +221,7 @@ readonly class RiderTripService
     public function end(User $user, int $tripId, ?UploadedFile $proofOfDeliveryPhoto = null): Trip
     {
         $riderProfile = $this->riderProfile($user);
-        $trip = $this->ownRide($user, $tripId)->load(['fareBreakdown', 'deliveryDetails']);
+        $trip = $this->ownRide($user, $tripId)->load(['fareBreakdown', 'deliveryDetails', 'zone']);
 
         if (! in_array($trip->status, self::ACTIVE_STATUSES, true)) {
             throw ValidationException::withMessages([
@@ -238,7 +240,7 @@ readonly class RiderTripService
             : null;
 
         return DB::transaction(function () use ($trip, $riderProfile, $proofOfDeliveryPhotoUrl): Trip {
-            $finalFare = $this->roundFare((float) $trip->estimated_fare);
+            $finalFare = $this->checkout->recalculateFare($trip);
             $riderEarning = $trip->fareBreakdown !== null ? (float) $trip->fareBreakdown->rider_earning : $finalFare;
 
             $trip->update([
@@ -287,15 +289,6 @@ readonly class RiderTripService
             'speed' => $data['speed'] ?? null,
             'recorded_at' => $data['recorded_at'] ?? now(),
         ]);
-    }
-
-    private function roundFare(float $fare): float
-    {
-        if (! Configuration::get('round_fare_to_nearest_500', false)) {
-            return $fare;
-        }
-
-        return floor($fare / 500) * 500;
     }
 
     private function storeProofOfDeliveryPhoto(Trip $trip, UploadedFile $file): string

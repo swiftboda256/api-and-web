@@ -28,6 +28,9 @@ class SurgePricingScheduleForm
                 TextInput::make('multiplier')
                     ->required()
                     ->numeric(),
+                TextInput::make('fixed_amount')
+                    ->required()
+                    ->numeric(),
                 Toggle::make('is_active')
                     ->required(),
             ]);

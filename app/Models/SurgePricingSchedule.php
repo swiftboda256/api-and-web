@@ -13,6 +13,7 @@ class SurgePricingSchedule extends BaseModel
         'start_time',
         'end_time',
         'multiplier',
+        'fixed_amount',
         'is_active',
     ];
 
@@ -20,6 +21,7 @@ class SurgePricingSchedule extends BaseModel
     {
         return [
             'multiplier' => 'decimal:2',
+            'fixed_amount' => 'decimal:2',
             'is_active' => 'boolean',
         ];
     }

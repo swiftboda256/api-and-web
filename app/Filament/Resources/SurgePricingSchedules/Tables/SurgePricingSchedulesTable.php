@@ -35,6 +35,9 @@ class SurgePricingSchedulesTable
                 TextColumn::make('multiplier')
                     ->numeric()
                     ->sortable(),
+                TextColumn::make('fixed_amount')
+                    ->numeric()
+                    ->sortable(),
                 ToggleColumn::make('is_active'),
                 TextColumn::make('created_at')
                     ->dateTime()
