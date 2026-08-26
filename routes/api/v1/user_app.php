@@ -7,10 +7,12 @@ use App\Http\Controllers\Api\V1\UserApp\EmergencyContactController;
 use App\Http\Controllers\Api\V1\UserApp\NotificationController;
 use App\Http\Controllers\Api\V1\UserApp\ProfileController;
 use App\Http\Controllers\Api\V1\UserApp\RiderController;
+use App\Http\Controllers\Api\V1\UserApp\ServiceCatalogController;
 use App\Http\Controllers\Api\V1\UserApp\SupportCategoryController;
 use App\Http\Controllers\Api\V1\UserApp\SupportTicketController;
 use App\Http\Controllers\Api\V1\UserApp\TripCancellationReasonController;
 use App\Http\Controllers\Api\V1\UserApp\TripController;
+use App\Http\Controllers\Api\V1\UserApp\VehicleTypeController;
 use App\Http\Controllers\Api\V1\UserApp\WalletController;
 use Illuminate\Support\Facades\Route;
 
@@ -30,6 +32,9 @@ Route::prefix('auth')->name('auth.')->group(function () {
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('profile', [ProfileController::class, 'index'])->name('profile');
     Route::patch('profile', [ProfileController::class, 'update'])->name('profile.update');
+
+    Route::get('vehicle-types', [VehicleTypeController::class, 'index'])->name('vehicle-types');
+    Route::get('services', [ServiceCatalogController::class, 'index'])->name('services');
 
     Route::prefix('saved-places')->name('saved-places.')->group(function () {
         Route::get('/', [AddressController::class, 'index'])->name('index');

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class VehicleType extends BaseModel
@@ -43,5 +44,13 @@ class VehicleType extends BaseModel
     public function surgePricingSchedules(): HasMany
     {
         return $this->hasMany(SurgePricingSchedule::class);
+    }
+
+    /**
+     * @return BelongsToMany<ServiceCatalog, $this>
+     */
+    public function serviceCatalogs(): BelongsToMany
+    {
+        return $this->belongsToMany(ServiceCatalog::class, 'service_catalog_vehicle_types')->withTimestamps();
     }
 }
