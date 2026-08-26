@@ -3,9 +3,11 @@
 namespace Database\Seeders;
 
 use App\Models\PricingRule;
+use App\Models\User;
 use App\Models\VehicleType;
 use App\Models\Zone;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Auth;
 
 class PricingRuleSeeder extends Seeder
 {
@@ -33,24 +35,38 @@ class PricingRuleSeeder extends Seeder
         $zones = Zone::query()->get();
         $vehicleTypes = VehicleType::query()->whereIn('code', array_keys($rates))->get();
 
-        foreach ($zones as $zone) {
-            foreach ($vehicleTypes as $vehicleType) {
-                $rate = $rates[$vehicleType->code];
+        /** @var User $systemUser */
+        $systemUser = User::role('system')->firstOrFail();
 
-                PricingRule::query()->firstOrCreate(
-                    ['zone_id' => $zone->id, 'vehicle_type_id' => $vehicleType->id],
-                    [
-                        'base_fare' => $rate['base_fare'],
-                        'per_km_rate' => $rate['per_km_rate'],
-                        'per_minute_rate' => $rate['per_minute_rate'],
-                        'minimum_fare' => $rate['minimum_fare'],
-                        'cancellation_fee' => $rate['cancellation_fee'],
-                        'commission_rate' => $rate['commission_rate'],
-                        'surge_multiplier' => 1,
-                        'currency_code' => 'UGX',
-                        'is_active' => true,
-                    ],
-                );
+        $actingUser = Auth::user();
+        Auth::setUser($systemUser);
+
+        try {
+            foreach ($zones as $zone) {
+                foreach ($vehicleTypes as $vehicleType) {
+                    $rate = $rates[$vehicleType->code];
+
+                    PricingRule::query()->firstOrCreate(
+                        ['zone_id' => $zone->id, 'vehicle_type_id' => $vehicleType->id],
+                        [
+                            'base_fare' => $rate['base_fare'],
+                            'per_km_rate' => $rate['per_km_rate'],
+                            'per_minute_rate' => $rate['per_minute_rate'],
+                            'minimum_fare' => $rate['minimum_fare'],
+                            'cancellation_fee' => $rate['cancellation_fee'],
+                            'commission_rate' => $rate['commission_rate'],
+                            'surge_multiplier' => 1,
+                            'currency_code' => 'UGX',
+                            'is_active' => true,
+                        ],
+                    );
+                }
+            }
+        } finally {
+            if ($actingUser instanceof User) {
+                Auth::setUser($actingUser);
+            } else {
+                Auth::forgetGuards();
             }
         }
     }

@@ -2,11 +2,13 @@
 
 namespace Database\Seeders;
 
+use App\Models\User;
 use App\Models\Zone;
 use Clickbar\Magellan\Data\Geometries\LineString;
 use Clickbar\Magellan\Data\Geometries\Point;
 use Clickbar\Magellan\Data\Geometries\Polygon;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Auth;
 
 class ZoneSeeder extends Seeder
 {
@@ -46,17 +48,31 @@ class ZoneSeeder extends Seeder
             ['name' => 'Kabale', 'city' => 'Kabale', 'latitude' => -1.2486, 'longitude' => 29.9897],
         ];
 
-        foreach ($districts as $district) {
-            Zone::query()->updateOrCreate(
-                ['name' => $district['name'], 'city' => $district['city']],
-                [
-                    'country' => 'Uganda',
-                    'boundary' => $this->boundingBox($district['latitude'], $district['longitude']),
-                    'currency_code' => 'UGX',
-                    'timezone' => 'Africa/Kampala',
-                    'is_active' => true,
-                ],
-            );
+        /** @var User $systemUser */
+        $systemUser = User::role('system')->firstOrFail();
+
+        $actingUser = Auth::user();
+        Auth::setUser($systemUser);
+
+        try {
+            foreach ($districts as $district) {
+                Zone::query()->updateOrCreate(
+                    ['name' => $district['name'], 'city' => $district['city']],
+                    [
+                        'country' => 'Uganda',
+                        'boundary' => $this->boundingBox($district['latitude'], $district['longitude']),
+                        'currency_code' => 'UGX',
+                        'timezone' => 'Africa/Kampala',
+                        'is_active' => true,
+                    ],
+                );
+            }
+        } finally {
+            if ($actingUser instanceof User) {
+                Auth::setUser($actingUser);
+            } else {
+                Auth::forgetGuards();
+            }
         }
     }
 

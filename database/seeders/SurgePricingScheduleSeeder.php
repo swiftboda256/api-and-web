@@ -3,8 +3,10 @@
 namespace Database\Seeders;
 
 use App\Models\SurgePricingSchedule;
+use App\Models\User;
 use App\Models\Zone;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Auth;
 
 class SurgePricingScheduleSeeder extends Seeder
 {
@@ -19,24 +21,38 @@ class SurgePricingScheduleSeeder extends Seeder
     {
         $zones = Zone::query()->get();
 
-        foreach ($zones as $zone) {
-            foreach (self::PEAK_WINDOWS as $window) {
-                foreach (self::WEEKDAYS as $dayOfWeek) {
-                    SurgePricingSchedule::query()->firstOrCreate(
-                        [
-                            'zone_id' => $zone->id,
-                            'vehicle_type_id' => null,
-                            'day_of_week' => $dayOfWeek,
-                            'start_time' => $window['start_time'],
-                            'end_time' => $window['end_time'],
-                        ],
-                        [
-                            'multiplier' => 1.00,
-                            'fixed_amount' => 50.00,
-                            'is_active' => true,
-                        ],
-                    );
+        /** @var User $systemUser */
+        $systemUser = User::role('system')->firstOrFail();
+
+        $actingUser = Auth::user();
+        Auth::setUser($systemUser);
+
+        try {
+            foreach ($zones as $zone) {
+                foreach (self::PEAK_WINDOWS as $window) {
+                    foreach (self::WEEKDAYS as $dayOfWeek) {
+                        SurgePricingSchedule::query()->firstOrCreate(
+                            [
+                                'zone_id' => $zone->id,
+                                'vehicle_type_id' => null,
+                                'day_of_week' => $dayOfWeek,
+                                'start_time' => $window['start_time'],
+                                'end_time' => $window['end_time'],
+                            ],
+                            [
+                                'multiplier' => 1.00,
+                                'fixed_amount' => 50.00,
+                                'is_active' => true,
+                            ],
+                        );
+                    }
                 }
+            }
+        } finally {
+            if ($actingUser instanceof User) {
+                Auth::setUser($actingUser);
+            } else {
+                Auth::forgetGuards();
             }
         }
     }

@@ -3,7 +3,9 @@
 namespace Database\Seeders;
 
 use App\Models\SupportCategory;
+use App\Models\User;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Auth;
 
 class SupportCategorySeeder extends Seeder
 {
@@ -17,14 +19,28 @@ class SupportCategorySeeder extends Seeder
             ['code' => 'other', 'name' => 'Other'],
         ];
 
-        foreach ($categories as $category) {
-            SupportCategory::query()->firstOrCreate(
-                ['code' => $category['code']],
-                [
-                    'name' => $category['name'],
-                    'is_active' => true,
-                ],
-            );
+        /** @var User $systemUser */
+        $systemUser = User::role('system')->firstOrFail();
+
+        $actingUser = Auth::user();
+        Auth::setUser($systemUser);
+
+        try {
+            foreach ($categories as $category) {
+                SupportCategory::query()->firstOrCreate(
+                    ['code' => $category['code']],
+                    [
+                        'name' => $category['name'],
+                        'is_active' => true,
+                    ],
+                );
+            }
+        } finally {
+            if ($actingUser instanceof User) {
+                Auth::setUser($actingUser);
+            } else {
+                Auth::forgetGuards();
+            }
         }
     }
 }

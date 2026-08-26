@@ -3,11 +3,32 @@
 namespace Database\Seeders;
 
 use App\Models\Configuration;
+use App\Models\User;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Auth;
 
 class ConfigurationSeeder extends Seeder
 {
     public function run(): void
+    {
+        /** @var User $systemUser */
+        $systemUser = User::role('system')->firstOrFail();
+
+        $actingUser = Auth::user();
+        Auth::setUser($systemUser);
+
+        try {
+            $this->seedConfigurations();
+        } finally {
+            if ($actingUser instanceof User) {
+                Auth::setUser($actingUser);
+            } else {
+                Auth::forgetGuards();
+            }
+        }
+    }
+
+    private function seedConfigurations(): void
     {
         Configuration::query()->firstOrCreate(
             ['key' => 'mock_otp'],

@@ -3,8 +3,10 @@
 namespace Database\Seeders;
 
 use App\Models\PromoCode;
+use App\Models\User;
 use App\Models\VehicleType;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Auth;
 
 class PromoCodeSeeder extends Seeder
 {
@@ -60,11 +62,25 @@ class PromoCodeSeeder extends Seeder
             ],
         ];
 
-        foreach ($promoCodes as $promoCode) {
-            PromoCode::query()->firstOrCreate(
-                ['code' => $promoCode['code']],
-                collect($promoCode)->except('code')->all(),
-            );
+        /** @var User $systemUser */
+        $systemUser = User::role('system')->firstOrFail();
+
+        $actingUser = Auth::user();
+        Auth::setUser($systemUser);
+
+        try {
+            foreach ($promoCodes as $promoCode) {
+                PromoCode::query()->firstOrCreate(
+                    ['code' => $promoCode['code']],
+                    collect($promoCode)->except('code')->all(),
+                );
+            }
+        } finally {
+            if ($actingUser instanceof User) {
+                Auth::setUser($actingUser);
+            } else {
+                Auth::forgetGuards();
+            }
         }
     }
 }

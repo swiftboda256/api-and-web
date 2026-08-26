@@ -3,7 +3,9 @@
 namespace Database\Seeders;
 
 use App\Models\TripCancellationReason;
+use App\Models\User;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Auth;
 
 class TripCancellationReasonSeeder extends Seeder
 {
@@ -23,14 +25,28 @@ class TripCancellationReasonSeeder extends Seeder
             ['label' => 'Other', 'applies_to' => 'both'],
         ];
 
-        foreach ($reasons as $reason) {
-            TripCancellationReason::query()->firstOrCreate(
-                ['label' => $reason['label']],
-                [
-                    'applies_to' => $reason['applies_to'],
-                    'is_active' => true,
-                ],
-            );
+        /** @var User $systemUser */
+        $systemUser = User::role('system')->firstOrFail();
+
+        $actingUser = Auth::user();
+        Auth::setUser($systemUser);
+
+        try {
+            foreach ($reasons as $reason) {
+                TripCancellationReason::query()->firstOrCreate(
+                    ['label' => $reason['label']],
+                    [
+                        'applies_to' => $reason['applies_to'],
+                        'is_active' => true,
+                    ],
+                );
+            }
+        } finally {
+            if ($actingUser instanceof User) {
+                Auth::setUser($actingUser);
+            } else {
+                Auth::forgetGuards();
+            }
         }
     }
 }
