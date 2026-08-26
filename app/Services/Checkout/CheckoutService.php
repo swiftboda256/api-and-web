@@ -86,14 +86,10 @@ readonly class CheckoutService
     }
 
     /**
-     * @return array{promo: ?PromoCode, discount: float}
+     * Validates a promo code independent of any specific trip (activity window and usage limits only).
      */
-    public function resolvePromoDiscount(?string $code, User $user, Zone $zone, int $vehicleTypeId, float $fare): array
+    public function resolvePromoCode(string $code, User $user): PromoCode
     {
-        if (! $code) {
-            return ['promo' => null, 'discount' => 0.0];
-        }
-
         $promo = PromoCode::query()->where('code', $code)->where('is_active', true)->first();
 
         if (! $promo) {
@@ -108,6 +104,29 @@ readonly class CheckoutService
             throw ValidationException::withMessages(['promo_code' => 'This promo code has expired.']);
         }
 
+        if ($promo->usage_limit_total !== null && $promo->redemptions()->count() >= $promo->usage_limit_total) {
+            throw ValidationException::withMessages(['promo_code' => 'This promo code has reached its usage limit.']);
+        }
+
+        if ($promo->usage_limit_per_user !== null
+            && $promo->redemptions()->where('user_id', $user->id)->count() >= $promo->usage_limit_per_user) {
+            throw ValidationException::withMessages(['promo_code' => 'You have already used this promo code.']);
+        }
+
+        return $promo;
+    }
+
+    /**
+     * @return array{promo: ?PromoCode, discount: float}
+     */
+    public function resolvePromoDiscount(?string $code, User $user, Zone $zone, int $vehicleTypeId, float $fare): array
+    {
+        if (! $code) {
+            return ['promo' => null, 'discount' => 0.0];
+        }
+
+        $promo = $this->resolvePromoCode($code, $user);
+
         if ($promo->min_trip_amount && $fare < (float) $promo->min_trip_amount) {
             throw ValidationException::withMessages(['promo_code' => 'This trip does not meet the minimum amount required for this promo code.']);
         }
@@ -118,15 +137,6 @@ readonly class CheckoutService
 
         if ($promo->applicable_zone_ids && ! in_array($zone->id, $promo->applicable_zone_ids, true)) {
             throw ValidationException::withMessages(['promo_code' => 'This promo code does not apply in your area.']);
-        }
-
-        if ($promo->usage_limit_total !== null && $promo->redemptions()->count() >= $promo->usage_limit_total) {
-            throw ValidationException::withMessages(['promo_code' => 'This promo code has reached its usage limit.']);
-        }
-
-        if ($promo->usage_limit_per_user !== null
-            && $promo->redemptions()->where('user_id', $user->id)->count() >= $promo->usage_limit_per_user) {
-            throw ValidationException::withMessages(['promo_code' => 'You have already used this promo code.']);
         }
 
         $discount = $promo->discount_type === 'percentage'

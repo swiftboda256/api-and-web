@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\V1\UserApp\DeviceController;
 use App\Http\Controllers\Api\V1\UserApp\EmergencyContactController;
 use App\Http\Controllers\Api\V1\UserApp\NotificationController;
 use App\Http\Controllers\Api\V1\UserApp\ProfileController;
+use App\Http\Controllers\Api\V1\UserApp\PromoCodeController;
 use App\Http\Controllers\Api\V1\UserApp\RiderController;
 use App\Http\Controllers\Api\V1\UserApp\ServiceCatalogController;
 use App\Http\Controllers\Api\V1\UserApp\SupportCategoryController;
@@ -35,6 +36,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('vehicle-types', [VehicleTypeController::class, 'index'])->name('vehicle-types');
     Route::get('services', [ServiceCatalogController::class, 'index'])->name('services');
+
+    Route::post('promo-codes/verify', [PromoCodeController::class, 'verify'])->name('promo-codes.verify');
 
     Route::prefix('saved-places')->name('saved-places.')->group(function () {
         Route::get('/', [AddressController::class, 'index'])->name('index');

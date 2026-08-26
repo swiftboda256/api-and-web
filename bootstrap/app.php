@@ -8,6 +8,7 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -40,5 +41,13 @@ return Application::configure(basePath: dirname(__DIR__))
             }
 
             return Controller::error($e->getMessage() ?: 'You are not authorized to perform this action.', 403);
+        });
+
+        $exceptions->render(function (ValidationException $e, Request $request) use ($wantsJson): ?JsonResponse {
+            if (! $wantsJson($request)) {
+                return null;
+            }
+
+            return Controller::error($e->getMessage(), $e->status, $e->errors());
         });
     })->create();
