@@ -2,7 +2,7 @@
 
 namespace App\Services\Payment\Contracts;
 
-use App\Services\Payment\PaymentResult;
+use App\Services\Payment\MobileMoneyResult;
 
 interface PaymentGateway
 {
@@ -13,7 +13,18 @@ interface PaymentGateway
     public function name(): string;
 
     /**
-     * Charge a customer (e.g. mobile money, card) to fund a wallet top-up.
+     * Pull funds from a customer's mobile money wallet into the gateway account.
      */
-    public function charge(string $phone, float $amount, string $currencyCode, string $reference): PaymentResult;
+    public function collectFromMobileMoney(string $phone, float $amount, string $currencyCode, string $reference, string $narrative): MobileMoneyResult;
+
+    /**
+     * Push funds from the gateway account to a beneficiary's mobile money wallet.
+     */
+    public function disburseToMobileMoney(string $phone, float $amount, string $currencyCode, string $reference, string $narrative): MobileMoneyResult;
+
+    /**
+     * Look up the current status of a previously initiated transaction using the
+     * gateway's own transaction reference (as returned on the initiating call's result).
+     */
+    public function checkTxnStatus(string $transactionReference): MobileMoneyResult;
 }

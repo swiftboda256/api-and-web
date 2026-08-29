@@ -43,4 +43,12 @@ return [
         'priority' => env('EGOSMS_PRIORITY', '0'),
     ],
 
+    'yo' => [
+        'base_url' => env('YO_BASE_URL', 'https://paymentsapi1.yo.co.ug/ybs/task.php'),
+        'api_username' => env('YO_API_USERNAME'),
+        'api_password' => env('YO_API_PASSWORD'),
+        'account_provider_code' => env('YO_ACCOUNT_PROVIDER_CODE'),
+        'ipn_public_key' => env('YO_IPN_PUBLIC_KEY'),
+    ],
+
 ];

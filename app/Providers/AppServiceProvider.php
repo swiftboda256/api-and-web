@@ -6,7 +6,7 @@ use App\Models\Configuration;
 use App\Models\Rating;
 use App\Observers\RatingObserver;
 use App\Services\Payment\Contracts\PaymentGateway;
-use App\Services\Payment\MockPaymentGateway;
+use App\Services\Payment\YoPaymentService;
 use App\Services\Sms\Contracts\SmsGateway;
 use App\Services\Sms\EgoSmsGateway;
 use Carbon\CarbonImmutable;
@@ -24,7 +24,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(SmsGateway::class, EgoSmsGateway::class);
-        $this->app->bind(PaymentGateway::class, MockPaymentGateway::class);
+        $this->app->bind(PaymentGateway::class, YoPaymentService::class);
     }
 
     /**
