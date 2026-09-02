@@ -48,7 +48,7 @@ return [
         'api_username' => env('YO_API_USERNAME'),
         'api_password' => env('YO_API_PASSWORD'),
         'account_provider_code' => env('YO_ACCOUNT_PROVIDER_CODE'),
-        'ipn_public_key' => env('YO_IPN_PUBLIC_KEY'),
+        'ipn_public_key_path' => env('YO_IPN_PUBLIC_KEY'),
     ],
 
 ];

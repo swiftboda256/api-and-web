@@ -38,8 +38,6 @@ class YoPaymentService implements PaymentGateway
             'AccountProviderCode' => config('services.yo.account_provider_code'),
             'Narrative' => $narrative,
             'ExternalReference' => $reference,
-            'InstantNotificationUrl' => route('api.v1.payments.yo.ipn'),
-            'FailureNotificationUrl' => route('api.v1.payments.yo.failure'),
         ]);
 
         return $this->submit($xml, $amount);
@@ -112,10 +110,19 @@ class YoPaymentService implements PaymentGateway
 
     private function verifySignature(string $message, string $signature): bool
     {
-        $publicKeyPem = config('services.yo.ipn_public_key');
+        $publicKeyPath = config('services.yo.ipn_public_key_path');
 
-        if (! $publicKeyPem) {
-            Log::error('yo.ipn.missing_public_key');
+        if (! $publicKeyPath) {
+            Log::error('yo.ipn.missing_public_key_path');
+
+            return false;
+        }
+
+        $resolvedPath = base_path((string) $publicKeyPath);
+        $publicKeyPem = @file_get_contents($resolvedPath);
+
+        if ($publicKeyPem === false) {
+            Log::error('yo.ipn.unreadable_public_key_file', ['path' => $resolvedPath]);
 
             return false;
         }
