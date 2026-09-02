@@ -89,6 +89,10 @@
                     </button>
                 </form>
             @endif
+
+            <p class="mt-8 text-center text-xs text-[#706f6c] dark:text-[#A1A09A]">
+                <a href="{{ route('privacy-policy') }}" class="underline underline-offset-2 hover:text-[#1b1b18] dark:hover:text-[#EDEDEC]">Privacy Policy</a>
+            </p>
         </main>
     </body>
 </html>
