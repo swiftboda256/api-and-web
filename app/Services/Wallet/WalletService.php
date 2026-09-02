@@ -6,6 +6,7 @@ use App\Models\Transaction;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WithdrawalRequest;
+use App\Services\Payment\Constants\MobileMoneyTransactionStatus;
 use App\Services\Payment\Contracts\PaymentGateway;
 use Carbon\CarbonImmutable;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -83,7 +84,10 @@ readonly class WalletService
             $phone = $data['phone'] ?? $user->phone;
             $amount = (float) $data['amount'];
 
-            $result = $this->paymentGateway->charge($phone, $amount, $wallet->currency_code, $reference);
+            $result = $this->paymentGateway->collectFromMobileMoney($phone, $amount, $wallet->currency_code, $reference, 'Wallet top-up');
+
+            $balanceBefore = (float) $wallet->balance;
+            $succeeded = $result->status === MobileMoneyTransactionStatus::Succeeded;
 
             $transaction = Transaction::query()->create([
                 'user_id' => $user->id,
@@ -92,20 +96,70 @@ readonly class WalletService
                 'direction' => 'credit',
                 'transaction_type' => 'topup',
                 'amount' => $amount,
+                'balance_before' => $succeeded ? $balanceBefore : null,
+                'balance_after' => $succeeded ? round($balanceBefore + $amount, 2) : null,
                 'currency_code' => $wallet->currency_code,
                 'gateway' => $this->paymentGateway->name(),
-                'gateway_reference' => $result->gatewayReference,
+                'gateway_reference' => $result->transactionReference,
+                'external_reference' => $reference,
+                'network_reference' => $result->gatewayReference,
                 'phone' => $phone,
                 'narration' => 'Wallet top-up',
-                'status' => $result->successful ? 'completed' : 'failed',
+                'status' => $this->mapTransactionStatus($result->status),
                 'failure_reason' => $result->failureReason,
             ]);
 
-            if ($result->successful) {
+            if ($succeeded) {
                 $wallet->increment('balance', $amount);
             }
 
             return $transaction;
+        });
+    }
+
+    private function mapTransactionStatus(MobileMoneyTransactionStatus $status): string
+    {
+        return match ($status) {
+            MobileMoneyTransactionStatus::Succeeded => 'completed',
+            MobileMoneyTransactionStatus::Failed => 'failed',
+            MobileMoneyTransactionStatus::Pending, MobileMoneyTransactionStatus::Indeterminate => 'pending',
+        };
+    }
+
+    /**
+     * Resolves a still-pending gateway transaction to its final state — shared
+     * by the Yo! IPN webhook, the failure notification webhook, and the
+     * pending-transaction poller, so the lock/credit/snapshot logic only
+     * lives in one place. A no-op if the transaction is no longer pending
+     * (already resolved by whichever of those three got there first).
+     */
+    public function resolvePendingTransaction(int $transactionId, bool $succeeded, ?string $networkReference, ?string $failureReason): void
+    {
+        DB::transaction(function () use ($transactionId, $succeeded, $networkReference, $failureReason): void {
+            $transaction = Transaction::query()->whereKey($transactionId)->lockForUpdate()->first();
+
+            if (! $transaction || $transaction->status !== 'pending') {
+                return;
+            }
+
+            $balanceBefore = null;
+            $balanceAfter = null;
+
+            if ($succeeded && $transaction->wallet_id && $transaction->direction === 'credit') {
+                $wallet = Wallet::query()->whereKey($transaction->wallet_id)->lockForUpdate()->first();
+                $balanceBefore = (float) $wallet->balance;
+                $balanceAfter = round($balanceBefore + (float) $transaction->amount, 2);
+
+                $wallet->update(['balance' => $balanceAfter]);
+            }
+
+            $transaction->update([
+                'status' => $succeeded ? 'completed' : 'failed',
+                'network_reference' => $networkReference ?? $transaction->network_reference,
+                'balance_before' => $balanceBefore,
+                'balance_after' => $balanceAfter,
+                'failure_reason' => $succeeded ? null : ($failureReason ?? 'Yo! Payments reported this transaction as failed.'),
+            ]);
         });
     }
 
@@ -160,6 +214,8 @@ readonly class WalletService
                 'direction' => 'debit',
                 'transaction_type' => 'withdrawal',
                 'amount' => $amount,
+                'balance_before' => $balanceBefore,
+                'balance_after' => $balanceAfter,
                 'currency_code' => $wallet->currency_code,
                 'narration' => 'Wallet withdrawal',
                 'reference_type' => WithdrawalRequest::class,

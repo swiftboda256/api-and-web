@@ -1,5 +1,5 @@
 {
-    "$schema": "https://getcomposer.org/schema.json",
+    "schema": "https://getcomposer.org/schema.json",
     "name": "laravel/blank-livewire-starter-kit",
     "type": "project",
     "description": "The official Laravel starter kit for Livewire.",
@@ -16,6 +16,7 @@
         "laravel/tinker": "^3.0",
         "livewire/blaze": "^1.0",
         "livewire/livewire": "^4.1",
+        "resend/resend-laravel": "^1.4",
         "spatie/laravel-permission": "^8.3"
     },
     "require-dev": {

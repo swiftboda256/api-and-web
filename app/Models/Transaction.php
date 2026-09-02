@@ -15,9 +15,13 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
  * @property string $direction
  * @property string $transaction_type
  * @property float $amount
+ * @property float|null $balance_before
+ * @property float|null $balance_after
  * @property string $currency_code
  * @property string|null $gateway
  * @property string|null $gateway_reference
+ * @property string|null $external_reference
+ * @property string|null $network_reference
  * @property string|null $phone
  * @property string|null $narration
  * @property string $status
@@ -34,9 +38,13 @@ class Transaction extends BaseModel
         'direction',
         'transaction_type',
         'amount',
+        'balance_before',
+        'balance_after',
         'currency_code',
         'gateway',
         'gateway_reference',
+        'external_reference',
+        'network_reference',
         'phone',
         'narration',
         'reference_type',
@@ -49,6 +57,8 @@ class Transaction extends BaseModel
     {
         return [
             'amount' => 'decimal:2',
+            'balance_before' => 'decimal:2',
+            'balance_after' => 'decimal:2',
         ];
     }
 

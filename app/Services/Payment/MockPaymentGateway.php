@@ -2,6 +2,7 @@
 
 namespace App\Services\Payment;
 
+use App\Services\Payment\Constants\MobileMoneyTransactionStatus;
 use App\Services\Payment\Contracts\PaymentGateway;
 use Illuminate\Support\Str;
 
@@ -16,11 +17,32 @@ class MockPaymentGateway implements PaymentGateway
         return 'mock';
     }
 
-    public function charge(string $phone, float $amount, string $currencyCode, string $reference): PaymentResult
+    public function collectFromMobileMoney(string $phone, float $amount, string $currencyCode, string $reference, string $narrative): MobileMoneyResult
     {
-        return new PaymentResult(
-            successful: true,
-            gatewayReference: 'mock_'.Str::uuid(),
+        return new MobileMoneyResult(
+            status: MobileMoneyTransactionStatus::Succeeded,
+            transactionReference: 'mock_'.Str::uuid(),
+            gatewayReference: 'mock_mno_'.Str::uuid(),
+            amount: $amount,
+        );
+    }
+
+    public function disburseToMobileMoney(string $phone, float $amount, string $currencyCode, string $reference, string $narrative): MobileMoneyResult
+    {
+        return new MobileMoneyResult(
+            status: MobileMoneyTransactionStatus::Succeeded,
+            transactionReference: 'mock_'.Str::uuid(),
+            gatewayReference: 'mock_mno_'.Str::uuid(),
+            amount: $amount,
+        );
+    }
+
+    public function checkTxnStatus(string $transactionReference): MobileMoneyResult
+    {
+        return new MobileMoneyResult(
+            status: MobileMoneyTransactionStatus::Succeeded,
+            transactionReference: $transactionReference,
+            gatewayReference: 'mock_mno_'.Str::uuid(),
         );
     }
 }
