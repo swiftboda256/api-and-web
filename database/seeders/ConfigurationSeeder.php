@@ -51,6 +51,16 @@ class ConfigurationSeeder extends Seeder
         );
 
         Configuration::query()->firstOrCreate(
+            ['key' => 'privacy_contact_email'],
+            [
+                'value' => 'swiftboda256@gmail.com',
+                'group' => 'privacy',
+                'description' => 'Email address displayed in the public privacy policy for privacy requests and questions.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
             ['key' => 'dispatch_radius_km'],
             [
                 'value' => 50,
