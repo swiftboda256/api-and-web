@@ -21,7 +21,7 @@ readonly class OtpService
     public function generateOTP(string $phone, ?string $email, string $channel, string $purpose): void
     {
 
-        if ($this->isMockOtpEnabled()) {
+        if ($this->isMockOtpEnabled() || $this->isATestNumber($phone)) {
             return;
         }
 
@@ -64,7 +64,7 @@ readonly class OtpService
 
     public function verify(string $phone, string $code, string $purpose): void
     {
-        if ($this->isMockOtpEnabled()) {
+        if ($this->isMockOtpEnabled() || $this->isATestNumber($phone)) {
             return;
         }
 
@@ -109,5 +109,14 @@ readonly class OtpService
     private function isMockOtpEnabled(): bool
     {
         return ! app()->isProduction() && Configuration::get('mock_otp', false);
+    }
+
+    private function isATestNumber(string $phone): bool
+    {
+        return in_array($phone, [
+            Configuration::get('user_test_number'),
+            Configuration::get('rider_test_number'),
+            Configuration::get('rider_test_number_car'),
+        ], true);
     }
 }
