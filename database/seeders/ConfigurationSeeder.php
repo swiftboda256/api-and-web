@@ -89,5 +89,35 @@ class ConfigurationSeeder extends Seeder
                 'is_public' => false,
             ],
         );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'user_test_number'],
+            [
+                'value' => '3535353535',
+                'group' => 'auth',
+                'description' => 'Apple and Google play store test number for the user app.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'rider_test_number'],
+            [
+                'value' => '2525252525',
+                'group' => 'auth',
+                'description' => 'Apple and Google play store test number for the rider app (motorcycle rider).',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'rider_test_number_car'],
+            [
+                'value' => '2525252526',
+                'group' => 'auth',
+                'description' => 'Apple and Google play store test number for the rider app (car rider).',
+                'is_public' => false,
+            ],
+        );
     }
 }
