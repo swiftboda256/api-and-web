@@ -8,6 +8,7 @@ use App\Http\Requests\Api\V1\UserApp\Auth\VerifyOtpRequest;
 use App\Http\Resources\Api\V1\UserApp\UserResource;
 use App\Models\RiderProfile;
 use App\Models\User;
+use App\Models\Zone;
 use App\Services\Auth\OtpService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -52,6 +53,7 @@ class AuthController extends Controller
             RiderProfile::query()->create([
                 'user_id' => $user->id,
                 'rider_ref' => $this->generateRiderRef(),
+                'home_zone_id' => Zone::query()->where('name', 'Kampala')->value('id'),
             ]);
         }
 
