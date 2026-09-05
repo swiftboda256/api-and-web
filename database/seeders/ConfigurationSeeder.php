@@ -93,7 +93,7 @@ class ConfigurationSeeder extends Seeder
         Configuration::query()->firstOrCreate(
             ['key' => 'user_test_number'],
             [
-                'value' => '3535353535',
+                'value' => '353535353',
                 'group' => 'auth',
                 'description' => 'Apple and Google play store test number for the user app.',
                 'is_public' => false,
@@ -103,7 +103,7 @@ class ConfigurationSeeder extends Seeder
         Configuration::query()->firstOrCreate(
             ['key' => 'rider_test_number'],
             [
-                'value' => '2525252525',
+                'value' => '252525252',
                 'group' => 'auth',
                 'description' => 'Apple and Google play store test number for the rider app (motorcycle rider).',
                 'is_public' => false,
@@ -113,7 +113,7 @@ class ConfigurationSeeder extends Seeder
         Configuration::query()->firstOrCreate(
             ['key' => 'rider_test_number_car'],
             [
-                'value' => '2525252526',
+                'value' => '252525256',
                 'group' => 'auth',
                 'description' => 'Apple and Google play store test number for the rider app (car rider).',
                 'is_public' => false,
