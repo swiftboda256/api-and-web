@@ -113,10 +113,18 @@ readonly class OtpService
 
     private function isATestNumber(string $phone): bool
     {
-        return in_array($phone, [
+        $testNumbers = array_filter([
             Configuration::get('user_test_number'),
             Configuration::get('rider_test_number'),
             Configuration::get('rider_test_number_car'),
-        ], true);
+        ]);
+
+        foreach ($testNumbers as $testNumber) {
+            if (str_ends_with($phone, $testNumber)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
