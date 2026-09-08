@@ -8,9 +8,11 @@ use App\Models\User;
 use App\Notifications\OtpCodeNotification;
 use App\Services\Sms\Contracts\SmsGateway;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 readonly class OtpService
 {
@@ -43,7 +45,7 @@ readonly class OtpService
 
         $code = (string) random_int(10000, 99999);
 
-        Otp::query()->create([
+        $otp = Otp::query()->create([
             'channel' => $channel,
             'phone' => $phone,
             'email' => $email,
@@ -55,10 +57,30 @@ readonly class OtpService
 
         $message = "Your Swift Boda verification code is {$code}. It expires in ".config('otp.expiry_minutes').' minutes.';
 
-        if ($channel === 'sms') {
-            $this->smsGateway->send($phone, $message);
-        } else {
-            Notification::route('mail', $email)->notify(new OtpCodeNotification($code));
+        $delivered = true;
+
+        try {
+            if ($channel === 'sms') {
+                $delivered = $this->smsGateway->send($phone, $message);
+            } else {
+                Notification::route('mail', $email)->notify(new OtpCodeNotification($code));
+            }
+        } catch (Throwable $e) {
+            $delivered = false;
+            Log::error('otp.delivery_exception', [
+                'phone' => $phone,
+                'channel' => $channel,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        if (! $delivered) {
+            $otp->delete();
+            RateLimiter::clear($throttleKey);
+
+            throw ValidationException::withMessages([
+                'phone' => 'We were unable to send the verification code. Please try again.',
+            ]);
         }
     }
 
