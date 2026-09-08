@@ -57,6 +57,9 @@ class UsersTable
                         default => 'gray',
                     })
                     ->searchable(),
+                TextColumn::make('created_at')
+                    ->dateTime()
+                    ->sortable(),
                 TextColumn::make('creator.name')
                     ->numeric()
                     ->sortable(),
@@ -66,10 +69,6 @@ class UsersTable
                     ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('deleter.name')
                     ->numeric()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('created_at')
-                    ->dateTime()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('updated_at')
