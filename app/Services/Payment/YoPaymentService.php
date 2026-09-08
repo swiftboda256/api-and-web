@@ -6,7 +6,9 @@ use App\Services\Payment\Constants\MobileMoneyTransactionStatus;
 use App\Services\Payment\Contracts\PaymentGateway;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
+use OpenSSLAsymmetricKey;
 use SimpleXMLElement;
 
 /**
@@ -47,6 +49,21 @@ class YoPaymentService implements PaymentGateway
     {
         $this->assertSupportedCurrency($currencyCode);
 
+        $apiUsername = (string) config('services.yo.api_username');
+        $nonce = (string) Str::uuid();
+
+        $signature = $this->signWithdrawRequest($apiUsername, (string) $amount, $phone, $narrative, $reference, $nonce);
+
+        if ($signature === null) {
+            return new MobileMoneyResult(
+                status: MobileMoneyTransactionStatus::Failed,
+                transactionReference: null,
+                gatewayReference: null,
+                amount: $amount,
+                failureReason: 'Unable to sign the withdraw funds request with the configured private key.',
+            );
+        }
+
         $xml = $this->buildRequestXml('acwithdrawfunds', [
             'NonBlocking' => 'TRUE',
             'Amount' => $amount,
@@ -54,9 +71,73 @@ class YoPaymentService implements PaymentGateway
             'AccountProviderCode' => config('services.yo.account_provider_code'),
             'Narrative' => $narrative,
             'ExternalReference' => $reference,
+            'PublicKeyAuthenticationNonce' => $nonce,
+            'PublicKeyAuthenticationSignatureBase64' => $signature,
         ]);
 
         return $this->submit($xml, $amount);
+    }
+
+    /**
+     * Signs an acwithdrawfunds request per docs section 4.1: concatenate
+     * APIUsername+Amount+Account+Narrative+ExternalReference+Nonce (the last
+     * three truncated to 255 chars each), then RSA/SHA1-sign the result with
+     * the private key and base64-encode the signature.
+     */
+    private function signWithdrawRequest(string $apiUsername, string $amount, string $account, string $narrative, string $externalReference, string $nonce): ?string
+    {
+        $privateKey = $this->loadWithdrawPrivateKey();
+
+        if ($privateKey === null) {
+            return null;
+        }
+
+        $message = implode('', [
+            $apiUsername,
+            $amount,
+            $account,
+            substr($narrative, 0, 255),
+            substr($externalReference, 0, 255),
+            substr($nonce, 0, 255),
+        ]);
+
+        if (openssl_sign($message, $signature, $privateKey, OPENSSL_ALGO_SHA1) !== true) {
+            Log::error('yo.withdraw.signing_failed');
+
+            return null;
+        }
+
+        return base64_encode($signature);
+    }
+
+    private function loadWithdrawPrivateKey(): ?OpenSSLAsymmetricKey
+    {
+        $privateKeyPath = config('services.yo.withdraw_private_key_path');
+
+        if (! $privateKeyPath) {
+            Log::error('yo.withdraw.missing_private_key_path');
+
+            return null;
+        }
+
+        $resolvedPath = base_path((string) $privateKeyPath);
+        $privateKeyPem = @file_get_contents($resolvedPath);
+
+        if ($privateKeyPem === false) {
+            Log::error('yo.withdraw.unreadable_private_key_file', ['path' => $resolvedPath]);
+
+            return null;
+        }
+
+        $privateKey = openssl_pkey_get_private($privateKeyPem);
+
+        if ($privateKey === false) {
+            Log::error('yo.withdraw.invalid_private_key_config');
+
+            return null;
+        }
+
+        return $privateKey;
     }
 
     public function checkTxnStatus(string $transactionReference): MobileMoneyResult

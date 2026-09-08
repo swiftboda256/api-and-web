@@ -11,6 +11,8 @@ use App\Models\User;
 use App\Models\UserDevice;
 use App\Models\Wallet;
 use App\Services\Checkout\CheckoutService;
+use App\Services\Payment\Constants\MobileMoneyTransactionStatus;
+use App\Services\Payment\Contracts\PaymentGateway;
 use App\Services\Push\FcmGateway;
 use Clickbar\Magellan\Data\Geometries\Point;
 use Clickbar\Magellan\Database\PostgisFunctions\ST;
@@ -19,6 +21,7 @@ use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Throwable;
 
@@ -29,6 +32,7 @@ readonly class RiderTripService
     public function __construct(
         private FcmGateway $pushGateway,
         private CheckoutService $checkout,
+        private PaymentGateway $paymentGateway,
     ) {}
 
     /**
@@ -242,6 +246,7 @@ readonly class RiderTripService
         return DB::transaction(function () use ($trip, $riderProfile, $proofOfDeliveryPhotoUrl): Trip {
             $finalFare = $this->checkout->recalculateFare($trip);
             $riderEarning = $trip->fareBreakdown !== null ? (float) $trip->fareBreakdown->rider_earning : $finalFare;
+            $commissionAmount = round($finalFare - $riderEarning, 2);
 
             $trip->update([
                 'status' => 'completed',
@@ -254,9 +259,11 @@ readonly class RiderTripService
             }
 
             if ($trip->payment_method === 'wallet') {
-                $this->settleWalletPayment($trip, $riderProfile, $finalFare, $riderEarning);
+                $this->settleWalletPayment($trip, $riderProfile, $finalFare, $riderEarning, $commissionAmount);
             } elseif ($trip->payment_method === 'cash') {
-                $this->settleCashPayment($trip, $riderProfile, $finalFare, $riderEarning);
+                $this->settleCashPayment($trip, $riderProfile, $finalFare, $riderEarning, $commissionAmount);
+            } elseif ($trip->payment_method === 'mobile_money') {
+                $this->settleMobileMoneyPayment($trip, $riderProfile, $finalFare, $riderEarning, $commissionAmount);
             }
 
             $riderProfile->increment('total_trips');
@@ -344,7 +351,7 @@ readonly class RiderTripService
         );
     }
 
-    private function settleWalletPayment(Trip $trip, RiderProfile $riderProfile, float $finalFare, float $riderEarning): void
+    private function settleWalletPayment(Trip $trip, RiderProfile $riderProfile, float $finalFare, float $riderEarning, float $commissionAmount): void
     {
         $customerWallet = Wallet::query()->where('user_id', $trip->customer_id)->first();
 
@@ -396,10 +403,12 @@ readonly class RiderTripService
             'status' => $riderWallet ? 'completed' : 'pending',
         ]);
 
+        $this->recordCommissionTransaction($trip, 'wallet', $commissionAmount);
+
         $trip->update(['payment_status' => 'paid']);
     }
 
-    private function settleCashPayment(Trip $trip, RiderProfile $riderProfile, float $finalFare, float $riderEarning): void
+    private function settleCashPayment(Trip $trip, RiderProfile $riderProfile, float $finalFare, float $riderEarning, float $commissionAmount): void
     {
         Transaction::query()->create([
             'user_id' => $trip->customer_id,
@@ -415,6 +424,7 @@ readonly class RiderTripService
             'status' => 'completed',
         ]);
 
+
         Transaction::query()->create([
             'user_id' => $riderProfile->user_id,
             'wallet_id' => null,
@@ -429,7 +439,116 @@ readonly class RiderTripService
             'status' => 'completed',
         ]);
 
+        $this->recordCommissionTransaction($trip, 'cash', $commissionAmount);
+
         $trip->update(['payment_status' => 'paid']);
+    }
+
+    private function settleMobileMoneyPayment(Trip $trip, RiderProfile $riderProfile, float $finalFare, float $riderEarning, float $commissionAmount): void
+    {
+        $riderWallet = Wallet::query()
+            ->where('user_id', $riderProfile->user_id)
+            ->where('status', 'active')
+            ->lockForUpdate()
+            ->first();
+
+        if (! $riderWallet) {
+            throw ValidationException::withMessages([
+                'wallet' => 'You need an active wallet before you can receive a mobile-money trip payout.',
+            ]);
+        }
+
+        $reference = (string) Str::uuid();
+        $result = $this->paymentGateway->collectFromMobileMoney(
+            $trip->customer->phone,
+            $finalFare,
+            $trip->currency_code,
+            $reference,
+            "Payment for trip {$trip->trip_number}",
+        );
+
+        $transactionStatus = match ($result->status) {
+            MobileMoneyTransactionStatus::Succeeded => 'completed',
+            MobileMoneyTransactionStatus::Failed => 'failed',
+            MobileMoneyTransactionStatus::Pending, MobileMoneyTransactionStatus::Indeterminate => 'pending',
+        };
+
+        Transaction::query()->create([
+            'user_id' => $trip->customer_id,
+            'wallet_id' => null,
+            'method' => 'mobile_money',
+            'direction' => 'debit',
+            'transaction_type' => 'trip_payment',
+            'amount' => $finalFare,
+            'currency_code' => $trip->currency_code,
+            'gateway' => $this->paymentGateway->name(),
+            'gateway_reference' => $result->transactionReference,
+            'external_reference' => $reference,
+            'network_reference' => $result->gatewayReference,
+            'phone' => $trip->customer->phone,
+            'narration' => "Mobile-money payment for trip {$trip->trip_number}",
+            'reference_type' => Trip::class,
+            'reference_id' => $trip->id,
+            'status' => $transactionStatus,
+            'failure_reason' => $result->failureReason,
+        ]);
+
+        $payout = Transaction::query()->create([
+            'user_id' => $riderProfile->user_id,
+            'wallet_id' => $riderWallet->id,
+            'method' => 'mobile_money',
+            'direction' => 'credit',
+            'transaction_type' => 'trip_payout',
+            'amount' => $riderEarning,
+            'currency_code' => $trip->currency_code,
+            'narration' => "Mobile-money payout for trip {$trip->trip_number}",
+            'reference_type' => Trip::class,
+            'reference_id' => $trip->id,
+            'status' => $transactionStatus,
+            'failure_reason' => $result->failureReason,
+        ]);
+
+        if ($result->status === MobileMoneyTransactionStatus::Succeeded) {
+            $balanceBefore = (float) $riderWallet->balance;
+            $balanceAfter = round($balanceBefore + $riderEarning, 2);
+
+            $riderWallet->update(['balance' => $balanceAfter]);
+            $payout->update([
+                'balance_before' => $balanceBefore,
+                'balance_after' => $balanceAfter,
+            ]);
+
+            $this->recordCommissionTransaction($trip, 'mobile_money', $commissionAmount);
+
+            $trip->update(['payment_status' => 'paid']);
+
+            return;
+        }
+
+        $trip->update(['payment_status' => $result->status === MobileMoneyTransactionStatus::Failed ? 'failed' : 'pending']);
+    }
+
+    private function recordCommissionTransaction(Trip $trip, string $method, float $commissionAmount): void
+    {
+        if ($commissionAmount <= 0) {
+            return;
+        }
+
+        $systemUser = User::role('system')->firstOrFail();
+
+        Transaction::query()->create([
+            'user_id' => $systemUser->id,
+            'wallet_id' => null,
+            'method' => $method,
+            'direction' => 'credit',
+            'transaction_type' => 'commission',
+            'amount' => $commissionAmount,
+            'currency_code' => $trip->currency_code,
+            'narration' => "Commission for trip {$trip->trip_number}",
+            'reference_type' => Trip::class,
+            'reference_id' => $trip->id,
+            'status' => 'completed',
+        ]);
     }
 
     private function ownRide(User $user, int $tripId): Trip
