@@ -22,10 +22,10 @@ Route::prefix('auth')->name('auth.')->group(function () {
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('profile', [ProfileController::class, 'index'])->name('profile');
     Route::patch('profile', [ProfileController::class, 'update'])->name('profile.update');
+    Route::delete('profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
     Route::get('vehicle-types', [VehicleTypeController::class, 'index'])->name('vehicle-types');
     Route::get('zones', [ZoneController::class, 'index'])->name('zones');
-
 
     Route::prefix('wallet')->name('wallet.')->group(function () {
         Route::post('/', [WalletController::class, 'store'])->name('store');
