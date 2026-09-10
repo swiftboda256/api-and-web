@@ -253,8 +253,36 @@ class YoPaymentService implements PaymentGateway
         return htmlspecialchars((string) $value, ENT_XML1 | ENT_COMPAT, 'UTF-8');
     }
 
+    /**
+     * Masks APIUsername/APIPassword before the request XML is written to logs.
+     * Amount, Account, Narrative, ExternalReference, PublicKeyAuthenticationNonce,
+     * and PublicKeyAuthenticationSignatureBase64 are left visible for debugging.
+     */
+    private function maskCredentialsForLogging(string $xml): string
+    {
+        $parsed = simplexml_load_string($xml);
+
+        if ($parsed === false || ! isset($parsed->Request)) {
+            return '***UNABLE_TO_PARSE_REQUEST_XML***';
+        }
+
+        if (isset($parsed->Request->APIUsername)) {
+            $parsed->Request->APIUsername = '********';
+        }
+
+        if (isset($parsed->Request->APIPassword)) {
+            $parsed->Request->APIPassword = '********';
+        }
+
+        return (string) $parsed->asXML();
+    }
+
     private function submit(string $xml, ?float $amount): MobileMoneyResult
     {
+        Log::info('yo.request', [
+            'xml' => $this->maskCredentialsForLogging($xml),
+        ]);
+
         $response = Http::withHeaders([
             'Content-Type' => 'text/xml',
             'Content-transfer-encoding' => 'text',
