@@ -51,10 +51,9 @@ class Deploy extends Command
         $this->info('🧬 Running migrations ...');
         $this->runShellCommand('php artisan migrate --force');
 
-        // Step 7: Restart queue workers and Reverb so they pick up the new code
-        //        $this->info('🔄 Restarting queue workers and Reverb ...');
-        //        $this->runShellCommand('php artisan queue:restart');
-        //        $this->runShellCommand('php artisan reverb:restart');
+        // Step 7: Restart queue workers so they pick up the new code
+        $this->info('🔄 Restarting queue workers ...');
+        $this->runShellCommand('php artisan queue:restart');
 
         // Step 8: Exit maintenance mode
         $this->info('✅ Exiting maintenance mode ...');
