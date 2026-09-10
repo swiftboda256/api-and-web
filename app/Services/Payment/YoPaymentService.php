@@ -81,8 +81,10 @@ class YoPaymentService implements PaymentGateway
     /**
      * Signs an acwithdrawfunds request per docs section 4.1: concatenate
      * APIUsername+Amount+Account+Narrative+ExternalReference+Nonce (the last
-     * three truncated to 255 chars each), then RSA/SHA1-sign the result with
-     * the private key and base64-encode the signature.
+     * three truncated to 255 chars each), SHA1-hash the result, then RSA-sign
+     * that hash with the private key and base64-encode the signature. This
+     * matches Yo's official PHP SDK sample, which signs sha1($data) rather
+     * than the raw concatenated string.
      */
     private function signWithdrawRequest(string $apiUsername, string $amount, string $account, string $narrative, string $externalReference, string $nonce): ?string
     {
@@ -101,7 +103,7 @@ class YoPaymentService implements PaymentGateway
             substr($nonce, 0, 255),
         ]);
 
-        if (openssl_sign($message, $signature, $privateKey, OPENSSL_ALGO_SHA1) !== true) {
+        if (openssl_sign(sha1($message), $signature, $privateKey, OPENSSL_ALGO_SHA1) !== true) {
             Log::error('yo.withdraw.signing_failed');
 
             return null;
