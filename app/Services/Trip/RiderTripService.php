@@ -109,6 +109,12 @@ readonly class RiderTripService
 
     public function accept(User $user, int $tripId): Trip
     {
+        if ($user->status === 'requested_delete') {
+            throw ValidationException::withMessages([
+                'account' => 'You cannot accept rides while your account deletion request is pending. Cancel the deletion request to continue.',
+            ]);
+        }
+
         $riderProfile = $this->riderProfile($user);
 
         if ($riderProfile->kyc_status !== 'approved') {

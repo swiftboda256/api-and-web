@@ -100,6 +100,12 @@ readonly class TripService
      */
     public function book(User $user, array $data, CarbonImmutable $requestedAt): Trip
     {
+        if ($user->status === 'requested_delete') {
+            throw ValidationException::withMessages([
+                'account' => 'You cannot request trips while your account deletion request is pending. Cancel the deletion request to continue.',
+            ]);
+        }
+
         $pickup = Point::makeGeodetic((float) $data['pickup_latitude'], (float) $data['pickup_longitude']);
         $dropoff = Point::makeGeodetic((float) $data['dropoff_latitude'], (float) $data['dropoff_longitude']);
 

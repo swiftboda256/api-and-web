@@ -190,6 +190,14 @@ class User extends Authenticatable
     }
 
     /**
+     * @return HasMany<UserDeleteRequest, $this>
+     */
+    public function deleteRequests(): HasMany
+    {
+        return $this->hasMany(UserDeleteRequest::class);
+    }
+
+    /**
      * @return HasMany<ChatMessage, $this>
      */
     public function sentChatMessages(): HasMany
