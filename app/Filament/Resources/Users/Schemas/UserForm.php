@@ -10,6 +10,7 @@ use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
+use Illuminate\Database\Eloquent\Builder;
 
 class UserForm
 {
@@ -41,7 +42,11 @@ class UserForm
                 Section::make('Account Information')
                     ->schema([
                         Select::make('roles')
-                            ->relationship('roles', 'name')
+                            ->relationship(
+                                'roles',
+                                'name',
+                                modifyQueryUsing: fn (Builder $query): Builder => $query->whereNotIn('name', ['rider', 'customer', 'system']),
+                            )
                             ->multiple()
                             ->preload()
                             ->searchable(),
