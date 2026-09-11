@@ -15,12 +15,15 @@ use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
+use UnitEnum;
 
 class WaitlistEntryResource extends Resource
 {
     protected static ?string $model = WaitlistEntry::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedQueueList;
+
+    protected static string|UnitEnum|null $navigationGroup = 'Users';
 
     protected static ?string $recordTitleAttribute = 'email';
 

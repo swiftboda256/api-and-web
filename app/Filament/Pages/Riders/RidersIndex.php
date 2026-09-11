@@ -16,6 +16,7 @@ use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use UnitEnum;
 
 class RidersIndex extends Page implements HasTable
 {
@@ -27,6 +28,8 @@ class RidersIndex extends Page implements HasTable
     protected static ?string $slug = 'riders';
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedTruck;
+
+    protected static string|UnitEnum|null $navigationGroup = 'Riders';
 
     protected static ?string $navigationLabel = 'Riders';
 
