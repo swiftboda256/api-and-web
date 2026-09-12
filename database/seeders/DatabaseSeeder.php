@@ -24,6 +24,7 @@ class DatabaseSeeder extends Seeder
         $this->call(TestUserSeeder::class);
         $this->call(PricingRuleSeeder::class);
         $this->call(SurgePricingScheduleSeeder::class);
+        $this->call(WithdrawChargeSeeder::class);
         $this->call(PromoCodeSeeder::class);
         $this->call(TripCancellationReasonSeeder::class);
         $this->call(SupportCategorySeeder::class);

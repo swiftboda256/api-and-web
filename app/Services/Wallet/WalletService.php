@@ -20,6 +20,7 @@ readonly class WalletService
 {
     public function __construct(
         private PaymentGateway $paymentGateway,
+        private WithdrawChargeService $withdrawChargeService,
     ) {}
 
     /**
@@ -284,13 +285,16 @@ readonly class WalletService
             ]);
         }
 
-        if ($amount > (float) $wallet->balance) {
+        $charge = $this->withdrawChargeService->calculateCharge($data['channel'], $data['account_identifier'], $amount);
+        $totalDebit = round($amount + $charge, 2);
+
+        if ($totalDebit > (float) $wallet->balance) {
             throw ValidationException::withMessages([
-                'amount' => 'Insufficient wallet balance.',
+                'amount' => 'Insufficient wallet balance to cover this withdrawal and the applicable charges.',
             ]);
         }
 
-        return DB::transaction(function () use ($user, $wallet, $data, $amount): WithdrawalRequest {
+        return DB::transaction(function () use ($user, $wallet, $data, $amount, $charge, $totalDebit): WithdrawalRequest {
             $balanceBefore = (float) $wallet->balance;
             $reference = (string) Str::uuid();
             $isMobileMoney = $data['channel'] === 'mobile_money';
@@ -307,21 +311,18 @@ readonly class WalletService
             $withdrawalFailed = $transactionStatus === 'failed';
             $balanceAfter = $withdrawalFailed
                 ? $balanceBefore
-                : round($balanceBefore - $amount, 2);
-
-            if (! $withdrawalFailed) {
-                $wallet->update(['balance' => $balanceAfter]);
-            }
+                : round($balanceBefore - $totalDebit, 2);
 
             $withdrawalRequest = WithdrawalRequest::query()->create([
                 'user_id' => $user->id,
                 'wallet_id' => $wallet->id,
                 'amount' => $amount,
+                'charge' => $charge,
                 'balance_before' => $balanceBefore,
                 'balance_after' => $balanceAfter,
                 'channel' => $data['channel'],
                 'provider' => $data['provider'],
-                'account_identifier_masked' => $this->maskAccountIdentifier($data['account_identifier']),
+                'account_identifier_masked' => Str::mask($data['account_identifier'], '*', 0, -4),
                 'external_reference' => $reference,
                 'status' => $withdrawalFailed ? 'rejected' : ($transactionStatus === 'completed' ? 'completed' : 'processing'),
                 'processed_at' => $transactionStatus !== 'pending' ? now() : null,
@@ -334,7 +335,7 @@ readonly class WalletService
                 'method' => $isMobileMoney ? 'mobile_money' : 'wallet',
                 'direction' => 'debit',
                 'transaction_type' => 'withdrawal',
-                'amount' => $amount,
+                'amount' => $totalDebit,
                 'balance_before' => $withdrawalFailed ? null : $balanceBefore,
                 'balance_after' => $withdrawalFailed ? null : $balanceAfter,
                 'currency_code' => $wallet->currency_code,
@@ -396,16 +397,5 @@ readonly class WalletService
         }
 
         return $wallet;
-    }
-
-    private function maskAccountIdentifier(string $value): string
-    {
-        $length = strlen($value);
-
-        if ($length <= 4) {
-            return str_repeat('*', $length);
-        }
-
-        return str_repeat('*', $length - 4).substr($value, -4);
     }
 }

@@ -68,6 +68,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('top-up', [WalletController::class, 'topUp'])->name('top-up');
         Route::post('withdraw', [WalletController::class, 'withdraw'])->name('withdraw');
         Route::get('withdrawal-requests', [WalletController::class, 'withdrawalRequests'])->name('withdrawal-requests');
+        Route::get('withdraw-charges', [WalletController::class, 'withdrawCharges'])->name('withdraw-charges');
         Route::get('history', [WalletController::class, 'history'])->name('history');
     });
 
