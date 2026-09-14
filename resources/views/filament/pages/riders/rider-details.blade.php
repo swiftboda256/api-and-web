@@ -74,4 +74,5 @@
 
     @include('filament.pages.riders.partials.reject-modal')
     @include('filament.pages.riders.partials.document-preview-modal')
+    @include('filament.pages.riders.partials.edit-vehicle-modal')
 </x-filament-panels::page>

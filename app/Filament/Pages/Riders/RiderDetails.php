@@ -8,6 +8,8 @@ use App\Models\Transaction;
 use App\Models\Trip;
 use App\Models\User;
 use App\Models\UserDevice;
+use App\Models\VehicleModel;
+use App\Models\VehicleType;
 use App\Services\Rider\RiderKycService;
 use BezhanSalleh\FilamentShield\Traits\HasPageShield;
 use Filament\Notifications\Notification;
@@ -16,6 +18,7 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Laravel\Sanctum\PersonalAccessToken;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
@@ -70,6 +73,22 @@ class RiderDetails extends Page
     public string $transactionsSort = 'created_at';
 
     public string $transactionsSortDirection = 'desc';
+
+    public bool $editingVehicle = false;
+
+    public ?int $vehicleTypeId = null;
+
+    public ?int $vehicleModelId = null;
+
+    public string $plateNumber = '';
+
+    public string $registrationNumber = '';
+
+    public ?int $year = null;
+
+    public string $color = '';
+
+    public string $insuranceExpiryAt = '';
 
     public function mount(int $record): void
     {
@@ -196,6 +215,28 @@ class RiderDetails extends Page
     public function tokens(): Collection
     {
         return $this->rider()->tokens()->orderByDesc('last_used_at')->get();
+    }
+
+    /**
+     * @return Collection<int, VehicleType>
+     */
+    #[Computed]
+    public function vehicleTypeOptions(): Collection
+    {
+        return VehicleType::query()->orderBy('name')->get();
+    }
+
+    /**
+     * @return Collection<int, VehicleModel>
+     */
+    #[Computed]
+    public function vehicleModelOptions(): Collection
+    {
+        return VehicleModel::query()
+            ->when($this->vehicleTypeId, fn ($query, $vehicleTypeId) => $query->where('vehicle_type_id', $vehicleTypeId))
+            ->orderBy('make')
+            ->orderBy('name')
+            ->get();
     }
 
     public function setTab(string $tab): void
@@ -359,6 +400,63 @@ class RiderDetails extends Page
         $this->rider()->riderProfile->vehicle?->update(['status' => 'approved']);
 
         Notification::make()->title('Vehicle approved')->success()->send();
+    }
+
+    public function editVehicle(): void
+    {
+        $vehicle = $this->rider()->riderProfile->vehicle;
+
+        if (! $vehicle) {
+            return;
+        }
+
+        $this->vehicleTypeId = $vehicle->vehicle_type_id;
+        $this->vehicleModelId = $vehicle->vehicle_model_id;
+        $this->plateNumber = $vehicle->plate_number;
+        $this->registrationNumber = (string) $vehicle->registration_number;
+        $this->year = $vehicle->year;
+        $this->color = (string) $vehicle->color;
+        $this->insuranceExpiryAt = $vehicle->insurance_expiry_at?->format('Y-m-d') ?? '';
+        $this->editingVehicle = true;
+    }
+
+    public function cancelEditVehicle(): void
+    {
+        $this->editingVehicle = false;
+        $this->resetErrorBag();
+    }
+
+    public function saveVehicle(): void
+    {
+        $vehicle = $this->rider()->riderProfile->vehicle;
+
+        if (! $vehicle) {
+            return;
+        }
+
+        $data = $this->validate([
+            'vehicleTypeId' => ['required', 'integer', 'exists:vehicle_types,id'],
+            'vehicleModelId' => ['nullable', 'integer', 'exists:vehicle_models,id'],
+            'plateNumber' => ['required', 'string', 'max:255', Rule::unique('vehicles', 'plate_number')->ignore($vehicle->id)],
+            'registrationNumber' => ['nullable', 'string', 'max:255'],
+            'year' => ['nullable', 'integer', 'min:1980', 'max:'.(now()->year + 1)],
+            'color' => ['nullable', 'string', 'max:255'],
+            'insuranceExpiryAt' => ['nullable', 'date'],
+        ]);
+
+        $vehicle->update([
+            'vehicle_type_id' => $data['vehicleTypeId'],
+            'vehicle_model_id' => $data['vehicleModelId'],
+            'plate_number' => $data['plateNumber'],
+            'registration_number' => $data['registrationNumber'] !== '' ? $data['registrationNumber'] : null,
+            'year' => $data['year'],
+            'color' => $data['color'] !== '' ? $data['color'] : null,
+            'insurance_expiry_at' => $data['insuranceExpiryAt'] !== '' ? $data['insuranceExpiryAt'] : null,
+        ]);
+
+        Notification::make()->title('Vehicle updated')->success()->send();
+
+        $this->editingVehicle = false;
     }
 
     public function revokeDevice(int $deviceId): void
