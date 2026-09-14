@@ -130,7 +130,7 @@ readonly class OtpService
 
     private function isMockOtpEnabled(): bool
     {
-        return ! app()->isProduction() && Configuration::get('mock_otp', false);
+        return ! app()->isProduction() && filter_var(Configuration::get('mock_otp', false), FILTER_VALIDATE_BOOLEAN);
     }
 
     private function isATestNumber(string $phone): bool
