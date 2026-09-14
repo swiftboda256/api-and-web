@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Api\V1\RiderApp;
 
 use App\Models\Trip;
+use App\Services\Checkout\CheckoutService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -44,7 +45,7 @@ class RideResource extends JsonResource
             ]),
             'distance_km' => $this->distance_km,
             'duration_minutes' => $this->duration_minutes,
-            'estimated_fare' => $this->estimated_fare,
+            'estimated_fare' => app(CheckoutService::class)->roundFare((float) $this->estimated_fare),
             'final_fare' => $this->final_fare,
             'currency_code' => $this->currency_code,
             'payment_method' => $this->payment_method,

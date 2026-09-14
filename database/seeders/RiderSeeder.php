@@ -6,6 +6,7 @@ use App\Models\RiderProfile;
 use App\Models\User;
 use App\Models\UserDevice;
 use App\Models\Vehicle;
+use App\Models\VehicleModel;
 use App\Models\VehicleType;
 use App\Models\Wallet;
 use App\Models\Zone;
@@ -87,12 +88,12 @@ class RiderSeeder extends Seeder
             'home_zone_id' => $zone->id,
         ]);
 
+        $vehicleModelId = VehicleModel::query()->where('vehicle_type_id', $vehicleType->id)->inRandomOrder()->value('id');
+
         Vehicle::query()->create([
             'rider_profile_id' => $riderProfile->id,
             'vehicle_type_id' => $vehicleType->id,
-            'make' => $vehicleType->code === 'motorcycle'
-                ? fake()->randomElement(['Bajaj', 'TVS', 'Honda', 'Yamaha'])
-                : fake()->randomElement(['Toyota', 'Nissan', 'Honda', 'Hyundai']),
+            'vehicle_model_id' => $vehicleModelId,
             'year' => fake()->numberBetween(2015, 2024),
             'color' => fake()->safeColorName(),
             'plate_number' => sprintf('U%s%03d%s', strtoupper(Str::random(2)), $sequence, strtoupper(Str::random(1))),

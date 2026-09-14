@@ -74,7 +74,7 @@ readonly class RiderProfileService
             $riderProfile->save();
 
             $vehicleFields = array_filter(
-                Arr::only($data, ['vehicle_type_id', 'make', 'year', 'color', 'plate_number', 'registration_number', 'insurance_expiry_at']),
+                Arr::only($data, ['vehicle_type_id', 'vehicle_model_id', 'year', 'color', 'plate_number', 'registration_number', 'insurance_expiry_at']),
                 fn ($value): bool => $value !== null,
             );
 
