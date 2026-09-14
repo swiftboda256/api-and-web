@@ -19,6 +19,7 @@ class WithdrawalRequestResource extends JsonResource
         return [
             'id' => $this->id,
             'amount' => $this->amount,
+            'charge' => $this->charge,
             'balance_before' => $this->balance_before,
             'balance_after' => $this->balance_after,
             'channel' => $this->channel,

@@ -14,8 +14,10 @@ use App\Http\Resources\Api\V1\UserApp\TransactionResource;
 use App\Http\Resources\Api\V1\UserApp\WalletResource;
 use App\Http\Resources\Api\V1\UserApp\WithdrawalRequestCollection;
 use App\Http\Resources\Api\V1\UserApp\WithdrawalRequestResource;
+use App\Http\Resources\Api\V1\UserApp\WithdrawChargeResource;
 use App\Models\User;
 use App\Services\Wallet\WalletService;
+use App\Services\Wallet\WithdrawChargeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -75,6 +77,11 @@ class WalletController extends Controller
         $user = $request->user();
 
         return self::success(new WithdrawalRequestCollection($walletService->withdrawalRequests($user, $request->validated())));
+    }
+
+    public function withdrawCharges(WithdrawChargeService $withdrawChargeService): JsonResponse
+    {
+        return self::success(WithdrawChargeResource::collection($withdrawChargeService->list()));
     }
 
     public function history(IndexWalletHistoryRequest $request, WalletService $walletService): JsonResponse

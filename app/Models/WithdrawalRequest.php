@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $user_id
  * @property int $wallet_id
  * @property float $amount
+ * @property float $charge
  * @property float|null $balance_before
  * @property float|null $balance_after
  * @property string $channel
@@ -28,6 +29,7 @@ class WithdrawalRequest extends BaseModel
         'user_id',
         'wallet_id',
         'amount',
+        'charge',
         'balance_before',
         'balance_after',
         'channel',
@@ -43,6 +45,7 @@ class WithdrawalRequest extends BaseModel
     {
         return [
             'amount' => 'decimal:2',
+            'charge' => 'decimal:2',
             'balance_before' => 'decimal:2',
             'balance_after' => 'decimal:2',
             'processed_at' => 'datetime',
