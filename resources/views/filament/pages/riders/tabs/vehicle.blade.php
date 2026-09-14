@@ -47,8 +47,8 @@
                 <dd class="mt-0.5 text-gray-950 dark:text-white">{{ $vehicle->registration_number ?? '—' }}</dd>
             </div>
             <div>
-                <dt class="text-gray-500 dark:text-gray-400">Make</dt>
-                <dd class="mt-0.5 text-gray-950 dark:text-white">{{ $vehicle->make ?? '—' }}</dd>
+                <dt class="text-gray-500 dark:text-gray-400">Model</dt>
+                <dd class="mt-0.5 text-gray-950 dark:text-white">{{ $vehicle->vehicleModel ? "{$vehicle->vehicleModel->make} {$vehicle->vehicleModel->name}" : '—' }}</dd>
             </div>
             <div>
                 <dt class="text-gray-500 dark:text-gray-400">Year</dt>

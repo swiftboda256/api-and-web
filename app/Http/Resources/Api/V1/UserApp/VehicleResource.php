@@ -23,7 +23,11 @@ class VehicleResource extends JsonResource
                 'name' => $this->vehicleType->name,
                 'code' => $this->vehicleType->code,
             ]),
-            'make' => $this->make,
+            'vehicle_model' => $this->whenLoaded('vehicleModel', fn () => $this->vehicleModel ? [
+                'id' => $this->vehicleModel->id,
+                'make' => $this->vehicleModel->make,
+                'name' => $this->vehicleModel->name,
+            ] : null),
             'year' => $this->year,
             'color' => $this->color,
             'plate_number' => $this->plate_number,

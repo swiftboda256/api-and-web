@@ -11,7 +11,7 @@ class Vehicle extends BaseModel
     protected $fillable = [
         'rider_profile_id',
         'vehicle_type_id',
-        'make',
+        'vehicle_model_id',
         'year',
         'color',
         'plate_number',
@@ -41,6 +41,14 @@ class Vehicle extends BaseModel
     public function vehicleType(): BelongsTo
     {
         return $this->belongsTo(VehicleType::class);
+    }
+
+    /**
+     * @return BelongsTo<VehicleModel, $this>
+     */
+    public function vehicleModel(): BelongsTo
+    {
+        return $this->belongsTo(VehicleModel::class);
     }
 
     /**

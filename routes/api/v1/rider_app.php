@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\V1\RiderApp\RideController;
 use App\Http\Controllers\Api\V1\RiderApp\SupportCategoryController;
 use App\Http\Controllers\Api\V1\RiderApp\SupportTicketController;
 use App\Http\Controllers\Api\V1\RiderApp\TripCancellationReasonController;
+use App\Http\Controllers\Api\V1\RiderApp\VehicleModelController;
 use App\Http\Controllers\Api\V1\RiderApp\VehicleTypeController;
 use App\Http\Controllers\Api\V1\RiderApp\WalletController;
 use App\Http\Controllers\Api\V1\RiderApp\ZoneController;
@@ -25,6 +26,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
     Route::get('vehicle-types', [VehicleTypeController::class, 'index'])->name('vehicle-types');
+    Route::get('vehicle-models', [VehicleModelController::class, 'index'])->name('vehicle-models');
     Route::get('zones', [ZoneController::class, 'index'])->name('zones');
 
     Route::prefix('wallet')->name('wallet.')->group(function () {

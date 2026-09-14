@@ -8,6 +8,7 @@ use App\Models\RiderProfile;
 use App\Models\User;
 use App\Models\UserDevice;
 use App\Models\Vehicle;
+use App\Models\VehicleModel;
 use App\Models\VehicleType;
 use App\Models\Wallet;
 use App\Models\Zone;
@@ -120,11 +121,13 @@ class TestUserSeeder extends Seeder
             ],
         );
 
+        $vehicleModelId = VehicleModel::query()->where('vehicle_type_id', $vehicleType->id)->value('id');
+
         Vehicle::query()->updateOrCreate(
             ['rider_profile_id' => $riderProfile->id],
             [
                 'vehicle_type_id' => $vehicleType->id,
-                'make' => $vehicleType->code === 'motorcycle' ? 'Honda' : 'Toyota',
+                'vehicle_model_id' => $vehicleModelId,
                 'year' => 2022,
                 'color' => 'White',
                 'plate_number' => 'UTEST'.strtoupper(substr($vehicleType->code, 0, 3)),

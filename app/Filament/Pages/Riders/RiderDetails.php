@@ -95,7 +95,7 @@ class RiderDetails extends Page
     {
         return User::query()
             ->whereHas('riderProfile')
-            ->with(['riderProfile.vehicle.vehicleType', 'riderProfile.homeZone', 'riderProfile.approvedBy', 'referredBy'])
+            ->with(['riderProfile.vehicle.vehicleType', 'riderProfile.vehicle.vehicleModel', 'riderProfile.homeZone', 'riderProfile.approvedBy', 'referredBy'])
             ->findOrFail($this->recordId);
     }
 

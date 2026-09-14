@@ -31,6 +31,14 @@ class VehicleType extends BaseModel
     }
 
     /**
+     * @return HasMany<VehicleModel, $this>
+     */
+    public function vehicleModels(): HasMany
+    {
+        return $this->hasMany(VehicleModel::class);
+    }
+
+    /**
      * @return HasMany<PricingRule, $this>
      */
     public function pricingRules(): HasMany

@@ -39,7 +39,7 @@ class UpdateProfileRequest extends FormRequest
             'longitude' => ['sometimes', 'required_with:latitude', 'numeric', 'between:-180,180'],
 
             'vehicle_type_id' => ['sometimes', 'nullable', 'integer', 'exists:vehicle_types,id'],
-            'make' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'vehicle_model_id' => ['sometimes', 'nullable', 'integer', 'exists:vehicle_models,id'],
             'year' => ['sometimes', 'nullable', 'integer', 'min:1980', 'max:'.(now()->year + 1)],
             'color' => ['sometimes', 'nullable', 'string', 'max:255'],
             'plate_number' => ['sometimes', 'nullable', 'string', 'max:255', Rule::unique('vehicles', 'plate_number')->ignore($this->user()?->riderProfile?->vehicle?->id)],
