@@ -3,7 +3,6 @@
 namespace App\Services\Wallet;
 
 use App\Models\Transaction;
-use App\Models\Trip;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WithdrawalRequest;
@@ -129,143 +128,6 @@ readonly class WalletService
     }
 
     /**
-     * Resolves a still-pending gateway transaction to its final state — shared
-     * by the Yo! IPN webhook, the failure notification webhook, and the
-     * pending-transaction poller, so the lock/credit/snapshot logic only
-     * lives in one place. A no-op if the transaction is no longer pending
-     * (already resolved by whichever of those three got there first).
-     */
-    public function resolvePendingTransaction(int $transactionId, bool $succeeded, ?string $networkReference, ?string $failureReason): void
-    {
-        DB::transaction(function () use ($transactionId, $succeeded, $networkReference, $failureReason): void {
-            $transaction = Transaction::query()->whereKey($transactionId)->lockForUpdate()->first();
-
-            if (! $transaction || $transaction->status !== 'pending') {
-                return;
-            }
-
-            $balanceBefore = null;
-            $balanceAfter = null;
-
-            if ($succeeded && $transaction->wallet_id && $transaction->direction === 'credit') {
-                $wallet = Wallet::query()->whereKey($transaction->wallet_id)->lockForUpdate()->first();
-                $balanceBefore = (float) $wallet->balance;
-                $balanceAfter = round($balanceBefore + (float) $transaction->amount, 2);
-
-                $wallet->update(['balance' => $balanceAfter]);
-            }
-
-            $transaction->update([
-                'status' => $succeeded ? 'completed' : 'failed',
-                'network_reference' => $networkReference ?? $transaction->network_reference,
-                'balance_before' => $balanceBefore ?? $transaction->balance_before,
-                'balance_after' => $balanceAfter ?? $transaction->balance_after,
-                'failure_reason' => $succeeded ? null : ($failureReason ?? 'Yo! Payments reported this transaction as failed.'),
-            ]);
-
-            if ($transaction->transaction_type === 'trip_payment'
-                && $transaction->reference_type === Trip::class
-                && $transaction->reference_id !== null) {
-                $this->resolvePendingTripPayout($transaction, $succeeded, $failureReason);
-            }
-
-            if ($transaction->transaction_type === 'withdrawal'
-                && $transaction->reference_type === WithdrawalRequest::class
-                && $transaction->reference_id !== null) {
-                $this->resolvePendingWithdrawal($transaction, $succeeded, $failureReason);
-            }
-        });
-    }
-
-    private function resolvePendingTripPayout(Transaction $payment, bool $succeeded, ?string $failureReason): void
-    {
-        $trip = Trip::query()->whereKey($payment->reference_id)->lockForUpdate()->first();
-        $payout = Transaction::query()
-            ->where('reference_type', Trip::class)
-            ->where('reference_id', $payment->reference_id)
-            ->where('transaction_type', 'trip_payout')
-            ->where('status', 'pending')
-            ->lockForUpdate()
-            ->first();
-
-        if ($succeeded && $payout && $payout->wallet_id) {
-            $wallet = Wallet::query()->whereKey($payout->wallet_id)->lockForUpdate()->first();
-
-            if ($wallet) {
-                $balanceBefore = (float) $wallet->balance;
-                $balanceAfter = round($balanceBefore + (float) $payout->amount, 2);
-
-                $wallet->update(['balance' => $balanceAfter]);
-                $payout->update([
-                    'status' => 'completed',
-                    'balance_before' => $balanceBefore,
-                    'balance_after' => $balanceAfter,
-                    'failure_reason' => null,
-                ]);
-            }
-        } elseif ($payout) {
-            $payout->update([
-                'status' => 'failed',
-                'failure_reason' => $failureReason ?? 'The customer mobile-money payment failed.',
-            ]);
-        }
-
-        if ($trip && ($succeeded || $payout === null || $payout->status === 'failed')) {
-            $trip->update(['payment_status' => $succeeded ? 'paid' : 'failed']);
-        }
-    }
-
-    private function resolvePendingWithdrawal(Transaction $transaction, bool $succeeded, ?string $failureReason): void
-    {
-        $withdrawal = WithdrawalRequest::query()->whereKey($transaction->reference_id)->lockForUpdate()->first();
-
-        if (! $withdrawal || $withdrawal->status !== 'processing') {
-            return;
-        }
-
-        if ($succeeded) {
-            $withdrawal->update([
-                'status' => 'completed',
-                'processed_at' => now(),
-                'rejection_reason' => null,
-            ]);
-
-            return;
-        }
-
-        $wallet = Wallet::query()->whereKey($withdrawal->wallet_id)->lockForUpdate()->first();
-
-        if ($wallet) {
-            $balanceBefore = (float) $wallet->balance;
-            $balanceAfter = round($balanceBefore + (float) $transaction->amount, 2);
-
-            $wallet->update(['balance' => $balanceAfter]);
-
-            Transaction::query()->create([
-                'user_id' => $transaction->user_id,
-                'wallet_id' => $wallet->id,
-                'method' => 'wallet',
-                'direction' => 'credit',
-                'transaction_type' => 'refund',
-                'amount' => $transaction->amount,
-                'balance_before' => $balanceBefore,
-                'balance_after' => $balanceAfter,
-                'currency_code' => $transaction->currency_code,
-                'narration' => 'Reversal of failed wallet withdrawal',
-                'reference_type' => WithdrawalRequest::class,
-                'reference_id' => $withdrawal->id,
-                'status' => 'completed',
-            ]);
-        }
-
-        $withdrawal->update([
-            'status' => 'rejected',
-            'processed_at' => now(),
-            'rejection_reason' => $failureReason ?? 'The mobile-money disbursement failed.',
-        ]);
-    }
-
-    /**
      * @param  array<string, mixed>  $data
      */
     public function withdraw(User $user, array $data): WithdrawalRequest
@@ -285,19 +147,24 @@ readonly class WalletService
             ]);
         }
 
-        $charge = $this->withdrawChargeService->calculateCharge($data['channel'], $data['account_identifier'], $amount);
-        $totalDebit = round($amount + $charge, 2);
+        $isMobileMoney = $data['channel'] === 'mobile_money';
+        $breakdown = $this->withdrawChargeService->calculateChargeBreakdown($data['channel'], $data['account_identifier'], $amount);
+        $baseCharge = $breakdown['base_charge'];
+        // The Yo!/platform charge (base_charge) is recorded as its own ledger transaction
+        // below rather than being deducted from the rider's wallet — only the telecom
+        // charge affects the wallet. All withdrawals are mobile money for now.
+        $charge = $breakdown['operator_charge'];
+        $walletDebit = round($amount + $charge, 2);
 
-        if ($totalDebit > (float) $wallet->balance) {
+        if ($walletDebit > (float) $wallet->balance) {
             throw ValidationException::withMessages([
                 'amount' => 'Insufficient wallet balance to cover this withdrawal and the applicable charges.',
             ]);
         }
 
-        return DB::transaction(function () use ($user, $wallet, $data, $amount, $charge, $totalDebit): WithdrawalRequest {
+        return DB::transaction(function () use ($user, $wallet, $data, $amount, $charge, $baseCharge, $isMobileMoney, $walletDebit): WithdrawalRequest {
             $balanceBefore = (float) $wallet->balance;
             $reference = (string) Str::uuid();
-            $isMobileMoney = $data['channel'] === 'mobile_money';
             $result = $isMobileMoney
                 ? $this->paymentGateway->disburseToMobileMoney(
                     $data['account_identifier'],
@@ -311,7 +178,7 @@ readonly class WalletService
             $withdrawalFailed = $transactionStatus === 'failed';
             $balanceAfter = $withdrawalFailed
                 ? $balanceBefore
-                : round($balanceBefore - $totalDebit, 2);
+                : round($balanceBefore - $walletDebit, 2);
 
             $withdrawalRequest = WithdrawalRequest::query()->create([
                 'user_id' => $user->id,
@@ -335,7 +202,7 @@ readonly class WalletService
                 'method' => $isMobileMoney ? 'mobile_money' : 'wallet',
                 'direction' => 'debit',
                 'transaction_type' => 'withdrawal',
-                'amount' => $totalDebit,
+                'amount' => $walletDebit,
                 'balance_before' => $withdrawalFailed ? null : $balanceBefore,
                 'balance_after' => $withdrawalFailed ? null : $balanceAfter,
                 'currency_code' => $wallet->currency_code,
@@ -350,6 +217,28 @@ readonly class WalletService
                 'status' => $transactionStatus,
                 'failure_reason' => $result?->failureReason,
             ]);
+
+            // Ledger-only record of the Yo!/platform charge — credited to the system
+            // account, not the rider's wallet (only the telecom charge affects that,
+            // via the withdrawal transaction above).
+            if ($isMobileMoney && $baseCharge > 0) {
+                $systemUser = User::role('system')->firstOrFail();
+
+                Transaction::query()->create([
+                    'user_id' => $systemUser->id,
+                    'wallet_id' => null,
+                    'method' => 'mobile_money',
+                    'direction' => 'credit',
+                    'transaction_type' => 'withdrawal_charge',
+                    'amount' => $baseCharge,
+                    'currency_code' => $wallet->currency_code,
+                    'narration' => 'Yo! Payments charge for withdrawal',
+                    'reference_type' => WithdrawalRequest::class,
+                    'reference_id' => $withdrawalRequest->id,
+                    'status' => $transactionStatus,
+                    'failure_reason' => $withdrawalFailed ? $result->failureReason : null,
+                ]);
+            }
 
             return $withdrawalRequest;
         });

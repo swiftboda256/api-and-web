@@ -14,6 +14,7 @@ use App\Services\Checkout\CheckoutService;
 use App\Services\Payment\Constants\MobileMoneyTransactionStatus;
 use App\Services\Payment\Contracts\PaymentGateway;
 use App\Services\Push\FcmGateway;
+use App\Services\Wallet\TransactionService;
 use Clickbar\Magellan\Data\Geometries\Point;
 use Clickbar\Magellan\Database\PostgisFunctions\ST;
 use Illuminate\Http\UploadedFile;
@@ -33,6 +34,7 @@ readonly class RiderTripService
         private FcmGateway $pushGateway,
         private CheckoutService $checkout,
         private PaymentGateway $paymentGateway,
+        private TransactionService $transactionService,
     ) {}
 
     /**
@@ -409,7 +411,7 @@ readonly class RiderTripService
             'status' => $riderWallet ? 'completed' : 'pending',
         ]);
 
-        $this->recordCommissionTransaction($trip, 'wallet', $commissionAmount);
+        $this->transactionService->recordCommissionTransaction($trip, 'wallet', $commissionAmount);
 
         $trip->update(['payment_status' => 'paid']);
     }
@@ -430,7 +432,6 @@ readonly class RiderTripService
             'status' => 'completed',
         ]);
 
-
         Transaction::query()->create([
             'user_id' => $riderProfile->user_id,
             'wallet_id' => null,
@@ -445,7 +446,7 @@ readonly class RiderTripService
             'status' => 'completed',
         ]);
 
-        $this->recordCommissionTransaction($trip, 'cash', $commissionAmount);
+        $this->transactionService->recordCommissionTransaction($trip, 'cash', $commissionAmount);
 
         $trip->update(['payment_status' => 'paid']);
     }
@@ -524,7 +525,7 @@ readonly class RiderTripService
                 'balance_after' => $balanceAfter,
             ]);
 
-            $this->recordCommissionTransaction($trip, 'mobile_money', $commissionAmount);
+            $this->transactionService->recordCommissionTransaction($trip, 'mobile_money', $commissionAmount);
 
             $trip->update(['payment_status' => 'paid']);
 
@@ -532,29 +533,6 @@ readonly class RiderTripService
         }
 
         $trip->update(['payment_status' => $result->status === MobileMoneyTransactionStatus::Failed ? 'failed' : 'pending']);
-    }
-
-    private function recordCommissionTransaction(Trip $trip, string $method, float $commissionAmount): void
-    {
-        if ($commissionAmount <= 0) {
-            return;
-        }
-
-        $systemUser = User::role('system')->firstOrFail();
-
-        Transaction::query()->create([
-            'user_id' => $systemUser->id,
-            'wallet_id' => null,
-            'method' => $method,
-            'direction' => 'credit',
-            'transaction_type' => 'commission',
-            'amount' => $commissionAmount,
-            'currency_code' => $trip->currency_code,
-            'narration' => "Commission for trip {$trip->trip_number}",
-            'reference_type' => Trip::class,
-            'reference_id' => $trip->id,
-            'status' => 'completed',
-        ]);
     }
 
     private function ownRide(User $user, int $tripId): Trip
