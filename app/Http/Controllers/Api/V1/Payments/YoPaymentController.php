@@ -3,12 +3,10 @@
 namespace App\Http\Controllers\Api\V1\Payments;
 
 use App\Http\Controllers\Controller;
-use App\Models\Transaction;
 use App\Services\Payment\YoPaymentService;
-use App\Services\Wallet\WalletService;
+use App\Services\Wallet\TransactionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 
 /**
  * Receives Yo! Payments webhooks: Instant Payment Notifications on success
@@ -23,11 +21,11 @@ use Illuminate\Support\Facades\Log;
  * resolve a transaction to its final state once the mobile money network
  * confirms or rejects the payment. Always answers 200 OK, per the docs, so
  * Yo! does not endlessly retry — signature failures and unmatched/duplicate
- * transactions are logged and ignored rather than rejected.
+ * transactions are logged and ignored rather than rejected (see TransactionService).
  */
 class YoPaymentController extends Controller
 {
-    public function handleIPN(Request $request, YoPaymentService $yoService, WalletService $walletService): JsonResponse
+    public function submitIPN(Request $request, YoPaymentService $yoService, TransactionService $transactionService): JsonResponse
     {
         if (! $request->input('failed_transaction_reference')) {
             $payload = $request->only([
@@ -35,71 +33,18 @@ class YoPaymentController extends Controller
                 'external_ref', 'msisdn', 'payer_names', 'payer_email',
             ]);
 
-            Log::info('yo.ipn.received', $payload);
-
-            $signature = (string) $request->input('signature');
-
-            if (! $yoService->verifyIpnSignature($payload, $signature)) {
-                Log::warning('yo.ipn.invalid_signature', $payload);
-
-                return self::success(message: 'Ignored');
-            }
-
-            $externalReference = $payload['external_ref'] ?? null;
-
-            if (! $externalReference) {
-                Log::warning('yo.ipn.missing_external_ref', $payload);
-
-                return self::success(message: 'Ignored');
-            }
-
-            $transaction = Transaction::query()
-                ->where('external_reference', $externalReference)
-                ->first();
-
-            if (! $transaction) {
-                Log::warning('yo.ipn.unmatched_transaction', $payload);
-
-                return self::success(message: 'Ignored');
-            }
-
-            $walletService->resolvePendingTransaction($transaction->id, succeeded: true, networkReference: $payload['network_ref'] ?? null, failureReason: null);
+            $transactionService->handleYoSuccessIPN($yoService, $payload, (string) $request->input('signature'));
         } else {
-            $reference = $request->input('failed_transaction_reference');
             $initDate = $request->input('transaction_init_date', $request->input('transaction_date'));
 
-            Log::info('yo.failure_notification.received', [
-                'failed_transaction_reference' => $reference,
-                'transaction_init_date' => $initDate,
-            ]);
-
-            $verification = (string) $request->input('verification');
-
-            if (! $yoService->verifyFailureNotificationSignature([
-                'failed_transaction_reference' => $reference,
-                'transaction_init_date' => $initDate,
-            ], $verification)) {
-                Log::warning('yo.failure_notification.invalid_signature', ['failed_transaction_reference' => $reference]);
-
-                return self::success(message: 'Ignored');
-            }
-
-            $transaction = Transaction::query()
-                ->where(function ($query) use ($reference): void {
-                    $query->where('external_reference', $reference)
-                        ->orWhere('gateway_reference', $reference);
-                })
-                ->first();
-
-            if (! $transaction) {
-                Log::warning('yo.failure_notification.unmatched_transaction', ['reference' => $reference]);
-
-                return self::success(message: 'Ignored');
-            }
-
-            $walletService->resolvePendingTransaction($transaction->id, succeeded: false, networkReference: null, failureReason: 'Yo! Payments reported this transaction as failed.');
+            $transactionService->handleYoFailureIPN(
+                $yoService,
+                (string) $request->input('failed_transaction_reference'),
+                $initDate !== null ? (string) $initDate : null,
+                (string) $request->input('verification'),
+            );
         }
 
-        return self::success(message: 'Processed');
+        return self::success();
     }
 }
