@@ -3,12 +3,12 @@
 namespace App\Filament\Resources\Users\Tables;
 
 use App\Models\User;
+use App\Services\Auth\UserAccountService;
 use App\Services\User\UserCredentialService;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
+use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
-use Filament\Actions\DeleteAction;
-use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ForceDeleteBulkAction;
 use Filament\Actions\RestoreBulkAction;
@@ -20,6 +20,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Collection;
 
 class UsersTable
 {
@@ -121,14 +122,58 @@ class UsersTable
                         ->modalDescription('This is a hard block — the user will no longer be able to log in at all. Use this only for confirmed policy violations.')
                         ->visible(fn (User $record): bool => $record->status !== 'banned')
                         ->action(fn (User $record) => $record->update(['status' => 'banned', 'allow_login' => false])),
-                    DeleteAction::make(),
+                    Action::make('delete')
+                        ->label('Delete')
+                        ->icon(Heroicon::OutlinedTrash)
+                        ->color('danger')
+                        ->requiresConfirmation()
+                        ->modalDescription('This schedules the account for deletion. The user will be logged out and their data removed once processing completes.')
+                        ->visible(fn (User $record): bool => ! $record->trashed())
+                        ->action(function (User $record, UserAccountService $userAccountService): void {
+                            $deleteRequests = $userAccountService->bulkDelete([$record->id]);
+
+                            if ($deleteRequests->isEmpty()) {
+                                Notification::make()
+                                    ->title('Unable to delete user')
+                                    ->body('This user has an active trip. Please complete or cancel it before deleting the account.')
+                                    ->danger()
+                                    ->send();
+
+                                return;
+                            }
+
+                            Notification::make()
+                                ->title('Account deletion requested')
+                                ->success()
+                                ->send();
+                        }),
                 ]),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
-                    DeleteBulkAction::make(),
-                    ForceDeleteBulkAction::make(),
-                    RestoreBulkAction::make(),
+                    BulkAction::make('delete')
+                        ->label('Delete')
+                        ->icon(Heroicon::OutlinedTrash)
+                        ->color('danger')
+                        ->requiresConfirmation()
+                        ->modalDescription('This schedules each selected account for deletion. Users with an active trip will be skipped.')
+                        ->action(function (Collection $records, UserAccountService $userAccountService): void {
+                            $userIds = $records->pluck('id')->all();
+
+                            $deleteRequests = $userAccountService->bulkDelete($userIds);
+
+                            $skipped = count($userIds) - $deleteRequests->count();
+
+                            Notification::make()
+                                ->title($skipped > 0
+                                    ? "Deletion requested, {$skipped} skipped (active trip)"
+                                    : 'Account deletion requested')
+                                ->success()
+                                ->send();
+                        })
+                        ->deselectRecordsAfterCompletion(),
+//                    ForceDeleteBulkAction::make(),
+//                    RestoreBulkAction::make(),
                 ]),
             ]);
     }
