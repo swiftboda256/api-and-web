@@ -20,11 +20,13 @@ class AuthController extends Controller
 
     private const string OTP_CHANNEL = 'sms';
 
+    private const string AUTOCOMPLETE_CODE = 'YTeFR1MDdMK';
+
     public function login(RequestOtpRequest $request, OtpService $otpService): JsonResponse
     {
         $phone = $request->string('phone')->toString();
 
-        $otpService->generateOTP($phone, null, self::OTP_CHANNEL, self::PURPOSE);
+        $otpService->generateOTP($phone, null, self::OTP_CHANNEL, self::PURPOSE, self::AUTOCOMPLETE_CODE);
 
         return self::success(null, 'OTP has been sent');
     }

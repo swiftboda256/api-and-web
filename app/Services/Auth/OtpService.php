@@ -20,7 +20,7 @@ readonly class OtpService
         private SmsGateway $smsGateway,
     ) {}
 
-    public function generateOTP(string $phone, ?string $email, string $channel, string $purpose): void
+    public function generateOTP(string $phone, ?string $email, string $channel, string $purpose, ?string $autoCompleteCode = null): void
     {
 
         if ($this->isMockOtpEnabled() || $this->isATestNumber($phone)) {
@@ -55,7 +55,8 @@ readonly class OtpService
             'attempts' => 0,
         ]);
 
-        $message = "Your Swift Boda verification code is {$code}. It expires in ".config('otp.expiry_minutes').' minutes.';
+        $expiry_minutes = config('otp.expiry_minutes');
+        $message = "<#> Your Swift Boda verification code is {$code}. It expires in {$expiry_minutes} minutes\n{$autoCompleteCode}";
 
         $delivered = true;
 
