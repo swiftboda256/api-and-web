@@ -20,4 +20,11 @@ class EditZone extends EditRecord
             RestoreAction::make(),
         ];
     }
+
+    protected function mutateFormDataBeforeFill(array $data): array
+    {
+        unset($data['boundary']);
+
+        return $data;
+    }
 }
