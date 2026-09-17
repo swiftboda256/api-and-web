@@ -218,16 +218,47 @@ readonly class RiderTripService
             ]);
         }
 
-        $trip->update([
-            'status' => 'cancelled',
-            'cancelled_at' => now(),
-            'cancelled_by' => $user->id,
+        $pickup = $trip->pickup_location;
+        $vehicleTypeId = (int) $trip->vehicle_type_id;
+
+        Log::info('trip.rider_cancelled', [
+            'trip_id' => $trip->id,
+            'rider_id' => $user->id,
             'cancellation_reason_id' => $cancellationReasonId,
+        ]);
+
+        $trip->update([
+            'status' => 'searching',
+            'rider_id' => null,
+            'vehicle_id' => null,
+            'accepted_at' => null,
+            'arrived_at' => null,
+            'started_at' => null,
         ]);
 
         $riderProfile->update(['availability_status' => 'online']);
 
-        return $trip->refresh()->load(['vehicleType', 'fareBreakdown', 'deliveryDetails', 'customer', 'cancellationReason']);
+        $trip = $trip->refresh()->load(['vehicleType', 'fareBreakdown', 'deliveryDetails', 'customer.devices']);
+
+        try {
+            $this->dispatchToNearbyRiders($trip, $pickup, $vehicleTypeId, $user->id);
+        } catch (Throwable $e) {
+            Log::error('trip.rider_cancellation_dispatch_failed', [
+                'trip_id' => $trip->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        try {
+            $this->notifyCustomerOfRiderCancellation($trip);
+        } catch (Throwable $e) {
+            Log::error('trip.rider_cancellation_notification_failed', [
+                'trip_id' => $trip->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $trip;
     }
 
     public function end(User $user, int $tripId, ?UploadedFile $proofOfDeliveryPhoto = null): Trip
@@ -355,6 +386,66 @@ readonly class RiderTripService
             [
                 'trip_id' => (string) $trip->id,
                 'status' => 'arrived',
+            ],
+        );
+    }
+
+    private function dispatchToNearbyRiders(Trip $trip, Point $pickup, int $vehicleTypeId, int $excludedUserId): void
+    {
+        $radiusMeters = (float) Configuration::get('dispatch_radius_km', 5) * 1000;
+
+        $riderProfiles = RiderProfile::query()
+            ->where('availability_status', 'online')
+            ->whereNotNull('current_location')
+            ->where('user_id', '!=', $excludedUserId)
+            ->whereHas('vehicle', fn ($query) => $query->where('vehicle_type_id', $vehicleTypeId)->where('status', 'approved'))
+            ->where(ST::distanceSphere('current_location', $pickup), '<=', $radiusMeters)
+            ->with('user.devices')
+            ->get();
+
+        $tokens = $riderProfiles
+            ->flatMap(fn (RiderProfile $riderProfile) => $riderProfile->user->devices)
+            ->filter(fn (UserDevice $device): bool => $device->active && filled($device->fcm_token))
+            ->map(fn (UserDevice $device): string => (string) $device->fcm_token)
+            ->unique()
+            ->values()
+            ->all();
+
+        $body = $trip->pickup_address
+            ? "New {$trip->type} request near {$trip->pickup_address}"
+            : "New {$trip->type} request nearby";
+
+        $this->pushGateway->sendToTokens(
+            array_values($tokens),
+            'New trip request',
+            $body,
+            [
+                'trip_id' => (string) $trip->id,
+                'type' => $trip->type,
+                'pickup_latitude' => (string) $pickup->getLatitude(),
+                'pickup_longitude' => (string) $pickup->getLongitude(),
+                'estimated_fare' => (string) $trip->estimated_fare,
+                'currency_code' => $trip->currency_code,
+            ],
+        );
+    }
+
+    private function notifyCustomerOfRiderCancellation(Trip $trip): void
+    {
+        $tokens = $trip->customer->devices
+            ->filter(fn (UserDevice $device): bool => $device->active && filled($device->fcm_token))
+            ->map(fn (UserDevice $device): string => (string) $device->fcm_token)
+            ->unique()
+            ->values()
+            ->all();
+
+        $this->pushGateway->sendToTokens(
+            array_values($tokens),
+            'Your rider cancelled',
+            'Your rider cancelled the trip. We are finding you another rider.',
+            [
+                'trip_id' => (string) $trip->id,
+                'status' => 'searching',
             ],
         );
     }
