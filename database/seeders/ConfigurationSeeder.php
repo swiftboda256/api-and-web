@@ -81,6 +81,16 @@ class ConfigurationSeeder extends Seeder
         );
 
         Configuration::query()->firstOrCreate(
+            ['key' => 'free_distance_km'],
+            [
+                'value' => 4,
+                'group' => 'trip',
+                'description' => 'Distance in kilometers covered by the base fare before the per-km distance charge starts applying.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
             ['key' => 'round_fare_to_nearest_500'],
             [
                 'value' => true,
