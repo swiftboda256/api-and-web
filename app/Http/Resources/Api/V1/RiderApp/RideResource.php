@@ -51,6 +51,7 @@ class RideResource extends JsonResource
             'payment_method' => $this->payment_method,
             'payment_status' => $this->payment_status,
             'rider_earning' => $this->whenLoaded('fareBreakdown', fn () => $this->fareBreakdown->rider_earning),
+            'commission_amount' => $this->whenLoaded('fareBreakdown', fn () => $this->fareBreakdown->commission_amount),
             'delivery_details' => $this->whenLoaded('deliveryDetails', fn () => [
                 'recipient_name' => $this->deliveryDetails->recipient_name,
                 'recipient_phone' => $this->deliveryDetails->recipient_phone,
