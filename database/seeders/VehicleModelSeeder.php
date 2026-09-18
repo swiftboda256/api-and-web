@@ -30,6 +30,14 @@ class VehicleModelSeeder extends Seeder
             ['vehicle_type_id' => $motorcycleTypeId, 'make' => 'Haojue', 'name' => 'Ace'],
             ['vehicle_type_id' => $motorcycleTypeId, 'make' => 'Yamaha', 'name' => 'YBR125'],
             ['vehicle_type_id' => $motorcycleTypeId, 'make' => 'Suzuki', 'name' => 'GN125'],
+            ['vehicle_type_id' => $motorcycleTypeId, 'make' => 'Senke', 'name' => 'SK150'],
+            ['vehicle_type_id' => $motorcycleTypeId, 'make' => 'Dayun', 'name' => 'DY100'],
+            ['vehicle_type_id' => $motorcycleTypeId, 'make' => 'Zongshen', 'name' => 'ZS100-27'],
+            ['vehicle_type_id' => $motorcycleTypeId, 'make' => 'Qingqi', 'name' => 'QM100'],
+            ['vehicle_type_id' => $motorcycleTypeId, 'make' => 'Zembo', 'name' => 'Thunder'],
+            ['vehicle_type_id' => $motorcycleTypeId, 'make' => 'Zembo', 'name' => 'Storm'],
+            ['vehicle_type_id' => $motorcycleTypeId, 'make' => 'Spiro', 'name' => 'Electric Boda'],
+            ['vehicle_type_id' => $motorcycleTypeId, 'make' => 'GOGO Electric', 'name' => 'E-Boda'],
 
             ['vehicle_type_id' => $carTypeId, 'make' => 'Toyota', 'name' => 'Corolla'],
             ['vehicle_type_id' => $carTypeId, 'make' => 'Toyota', 'name' => 'Premio'],
@@ -90,6 +98,8 @@ class VehicleModelSeeder extends Seeder
             ['vehicle_type_id' => $carXlTypeId, 'make' => 'Toyota', 'name' => 'Regius'],
             ['vehicle_type_id' => $carXlTypeId, 'make' => 'Nissan', 'name' => 'Elgrand'],
             ['vehicle_type_id' => $carXlTypeId, 'make' => 'Mitsubishi', 'name' => 'Delica'],
+            ['vehicle_type_id' => $carXlTypeId, 'make' => 'Toyota', 'name' => 'Hilux'],
+            ['vehicle_type_id' => $carXlTypeId, 'make' => 'Isuzu', 'name' => 'D-Max'],
         ];
 
         $actingUser = Auth::user();
