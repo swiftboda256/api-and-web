@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\PromoCodes\Tables;
 
 use App\Models\PromoCode;
+use Filament\Actions\ActionGroup;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -27,29 +28,12 @@ class PromoCodesTable
                 TextColumn::make('discount_value')
                     ->numeric()
                     ->sortable(),
-                TextColumn::make('max_discount_amount')
-                    ->numeric()
-                    ->sortable(),
-                TextColumn::make('min_trip_amount')
-                    ->numeric()
-                    ->sortable(),
                 TextColumn::make('usage_limit_total')
                     ->numeric()
                     ->sortable(),
-                TextColumn::make('usage_limit_per_user')
-                    ->numeric()
-                    ->sortable(),
-                TextColumn::make('valid_from')
-                    ->dateTime()
-                    ->sortable(),
-                TextColumn::make('valid_until')
-                    ->dateTime()
-                    ->sortable(),
-                ToggleColumn::make('is_active'),
                 TextColumn::make('created_at')
                     ->dateTime()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
+                    ->sortable(),
                 TextColumn::make('updated_at')
                     ->dateTime()
                     ->sortable()
@@ -74,7 +58,9 @@ class PromoCodesTable
                 TrashedFilter::make(),
             ])
             ->recordActions([
-                EditAction::make(),
+                ActionGroup::make([
+                    EditAction::make(),
+                ]),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([

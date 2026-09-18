@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\PricingRules\Tables;
 
+use Filament\Actions\ActionGroup;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -34,22 +35,9 @@ class PricingRulesTable
                 TextColumn::make('minimum_fare')
                     ->numeric()
                     ->sortable(),
-                TextColumn::make('cancellation_fee')
-                    ->numeric()
-                    ->sortable(),
                 TextColumn::make('commission_rate')
+                    ->label('Commission Rate (%)')
                     ->numeric()
-                    ->sortable(),
-                TextColumn::make('surge_multiplier')
-                    ->numeric()
-                    ->sortable(),
-                TextColumn::make('currency_code')
-                    ->searchable(),
-                TextColumn::make('effective_from')
-                    ->dateTime()
-                    ->sortable(),
-                TextColumn::make('effective_to')
-                    ->dateTime()
                     ->sortable(),
                 IconColumn::make('is_active')
                     ->boolean(),
@@ -81,7 +69,9 @@ class PricingRulesTable
                 TrashedFilter::make(),
             ])
             ->recordActions([
-                EditAction::make(),
+                ActionGroup::make([
+                    EditAction::make(),
+                ]),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([

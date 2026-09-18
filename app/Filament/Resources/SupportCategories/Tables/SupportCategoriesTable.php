@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\SupportCategories\Tables;
 
+use Filament\Actions\ActionGroup;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -23,7 +24,6 @@ class SupportCategoriesTable
                     ->searchable(),
                 TextColumn::make('code')
                     ->searchable(),
-                ToggleColumn::make('is_active'),
                 TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()
@@ -52,7 +52,9 @@ class SupportCategoriesTable
                 TrashedFilter::make(),
             ])
             ->recordActions([
-                EditAction::make(),
+                ActionGroup::make([
+                    EditAction::make(),
+                ]),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([

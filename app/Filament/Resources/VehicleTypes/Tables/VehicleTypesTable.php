@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\VehicleTypes\Tables;
 
+use Filament\Actions\ActionGroup;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -27,8 +28,6 @@ class VehicleTypesTable
                     ->sortable(),
                 TextColumn::make('icon_url')
                     ->searchable(),
-                IconColumn::make('is_active')
-                    ->boolean(),
                 TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()
@@ -37,15 +36,17 @@ class VehicleTypesTable
                     ->dateTime()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('created_by')
+                TextColumn::make('creator.name')
                     ->numeric()
                     ->sortable(),
-                TextColumn::make('updated_by')
+                TextColumn::make('updater.name')
                     ->numeric()
-                    ->sortable(),
-                TextColumn::make('deleted_by')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('deleter.name')
                     ->numeric()
-                    ->sortable(),
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('deleted_at')
                     ->dateTime()
                     ->sortable()
@@ -55,7 +56,9 @@ class VehicleTypesTable
                 TrashedFilter::make(),
             ])
             ->recordActions([
-                EditAction::make(),
+                ActionGroup::make([
+                    EditAction::make(),
+                ]),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
