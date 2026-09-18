@@ -14,6 +14,11 @@ class ZoneForm
             ->components([
                 TextInput::make('name')
                     ->required(),
+                TextInput::make('code')
+                    ->label('Code')
+                    ->helperText('Used as the district code in rider references, e.g. KLA for Kampala.')
+                    ->maxLength(10)
+                    ->required(),
                 TextInput::make('city')
                     ->required(),
                 TextInput::make('country')
