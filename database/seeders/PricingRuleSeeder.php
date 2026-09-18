@@ -30,6 +30,14 @@ class PricingRuleSeeder extends Seeder
                 'cancellation_fee' => 0,
                 'commission_rate' => 9,
             ],
+            'car_xl' => [
+                'base_fare' => 1000,
+                'per_km_rate' => 750,
+                'per_minute_rate' => 0,
+                'minimum_fare' => 1000,
+                'cancellation_fee' => 0,
+                'commission_rate' => 9,
+            ],
         ];
 
         $zones = Zone::query()->get();
