@@ -65,6 +65,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/', [WalletController::class, 'store'])->name('store');
         Route::get('balance', [WalletController::class, 'balance'])->name('balance');
         Route::patch('pin-change', [WalletController::class, 'updatePin'])->name('pin.update');
+        Route::post('request-pin-reset', [WalletController::class, 'requestPinReset'])->name('pin-reset.request-otp');
+        Route::post('reset-pin', [WalletController::class, 'resetPin'])->name('pin-reset');
         Route::post('top-up', [WalletController::class, 'topUp'])->name('top-up');
         Route::post('withdraw', [WalletController::class, 'withdraw'])->name('withdraw');
         Route::get('withdrawal-requests', [WalletController::class, 'withdrawalRequests'])->name('withdrawal-requests');

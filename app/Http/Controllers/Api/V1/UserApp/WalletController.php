@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1\UserApp;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\UserApp\Wallet\IndexWalletHistoryRequest;
 use App\Http\Requests\Api\V1\UserApp\Wallet\IndexWithdrawalRequestsRequest;
+use App\Http\Requests\Api\V1\UserApp\Wallet\ResetWalletPinRequest;
 use App\Http\Requests\Api\V1\UserApp\Wallet\StoreWalletRequest;
 use App\Http\Requests\Api\V1\UserApp\Wallet\TopUpWalletRequest;
 use App\Http\Requests\Api\V1\UserApp\Wallet\UpdateWalletPinRequest;
@@ -57,6 +58,26 @@ class WalletController extends Controller
         $user = $request->user();
 
         $wallet = $walletService->updatePin($user, $request->validated());
+
+        return self::success(new WalletResource($wallet));
+    }
+
+    public function requestPinReset(Request $request, WalletService $walletService): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $walletService->requestPinReset($user);
+
+        return self::success(null, 'OTP has been sent');
+    }
+
+    public function resetPin(ResetWalletPinRequest $request, WalletService $walletService): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $wallet = $walletService->resetPin($user, $request->validated());
 
         return self::success(new WalletResource($wallet));
     }
