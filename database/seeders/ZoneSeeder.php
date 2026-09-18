@@ -20,32 +20,32 @@ class ZoneSeeder extends Seeder
     {
         $districts = [
             // Central
-            ['name' => 'Kampala', 'city' => 'Kampala', 'latitude' => 0.3476, 'longitude' => 32.5825],
-            ['name' => 'Wakiso', 'city' => 'Wakiso', 'latitude' => 0.4044, 'longitude' => 32.4593],
-            ['name' => 'Mukono', 'city' => 'Mukono', 'latitude' => 0.3533, 'longitude' => 32.7553],
-            ['name' => 'Mpigi', 'city' => 'Mpigi', 'latitude' => 0.2281, 'longitude' => 32.3306],
-            ['name' => 'Luwero', 'city' => 'Luwero', 'latitude' => 0.8500, 'longitude' => 32.4667],
-            ['name' => 'Masaka', 'city' => 'Masaka', 'latitude' => -0.3333, 'longitude' => 31.7333],
+            ['name' => 'Kampala', 'code' => 'KLA', 'city' => 'Kampala', 'latitude' => 0.3476, 'longitude' => 32.5825],
+            ['name' => 'Wakiso', 'code' => 'WKS', 'city' => 'Wakiso', 'latitude' => 0.4044, 'longitude' => 32.4593],
+            ['name' => 'Mukono', 'code' => 'MUK', 'city' => 'Mukono', 'latitude' => 0.3533, 'longitude' => 32.7553],
+            ['name' => 'Mpigi', 'code' => 'MPG', 'city' => 'Mpigi', 'latitude' => 0.2281, 'longitude' => 32.3306],
+            ['name' => 'Luwero', 'code' => 'LUW', 'city' => 'Luwero', 'latitude' => 0.8500, 'longitude' => 32.4667],
+            ['name' => 'Masaka', 'code' => 'MSK', 'city' => 'Masaka', 'latitude' => -0.3333, 'longitude' => 31.7333],
             // Eastern
-            ['name' => 'Jinja', 'city' => 'Jinja', 'latitude' => 0.4244, 'longitude' => 33.2042],
-            ['name' => 'Mbale', 'city' => 'Mbale', 'latitude' => 1.0827, 'longitude' => 34.1755],
-            ['name' => 'Soroti', 'city' => 'Soroti', 'latitude' => 1.7147, 'longitude' => 33.6111],
-            ['name' => 'Tororo', 'city' => 'Tororo', 'latitude' => 0.6928, 'longitude' => 34.1808],
-            ['name' => 'Iganga', 'city' => 'Iganga', 'latitude' => 0.6081, 'longitude' => 33.4686],
-            ['name' => 'Busia', 'city' => 'Busia', 'latitude' => 0.4608, 'longitude' => 34.0917],
+            ['name' => 'Jinja', 'code' => 'JJA', 'city' => 'Jinja', 'latitude' => 0.4244, 'longitude' => 33.2042],
+            ['name' => 'Mbale', 'code' => 'MBL', 'city' => 'Mbale', 'latitude' => 1.0827, 'longitude' => 34.1755],
+            ['name' => 'Soroti', 'code' => 'SRT', 'city' => 'Soroti', 'latitude' => 1.7147, 'longitude' => 33.6111],
+            ['name' => 'Tororo', 'code' => 'TRR', 'city' => 'Tororo', 'latitude' => 0.6928, 'longitude' => 34.1808],
+            ['name' => 'Iganga', 'code' => 'IGG', 'city' => 'Iganga', 'latitude' => 0.6081, 'longitude' => 33.4686],
+            ['name' => 'Busia', 'code' => 'BSA', 'city' => 'Busia', 'latitude' => 0.4608, 'longitude' => 34.0917],
             // Northern
-            ['name' => 'Gulu', 'city' => 'Gulu', 'latitude' => 2.7746, 'longitude' => 32.2990],
-            ['name' => 'Lira', 'city' => 'Lira', 'latitude' => 2.2350, 'longitude' => 32.9100],
-            ['name' => 'Arua', 'city' => 'Arua', 'latitude' => 3.0333, 'longitude' => 30.9500],
-            ['name' => 'Kitgum', 'city' => 'Kitgum', 'latitude' => 3.2783, 'longitude' => 32.8867],
-            ['name' => 'Moyo', 'city' => 'Moyo', 'latitude' => 3.6547, 'longitude' => 31.7292],
+            ['name' => 'Gulu', 'code' => 'GLU', 'city' => 'Gulu', 'latitude' => 2.7746, 'longitude' => 32.2990],
+            ['name' => 'Lira', 'code' => 'LIR', 'city' => 'Lira', 'latitude' => 2.2350, 'longitude' => 32.9100],
+            ['name' => 'Arua', 'code' => 'ARU', 'city' => 'Arua', 'latitude' => 3.0333, 'longitude' => 30.9500],
+            ['name' => 'Kitgum', 'code' => 'KTG', 'city' => 'Kitgum', 'latitude' => 3.2783, 'longitude' => 32.8867],
+            ['name' => 'Moyo', 'code' => 'MOY', 'city' => 'Moyo', 'latitude' => 3.6547, 'longitude' => 31.7292],
             // Western
-            ['name' => 'Mbarara', 'city' => 'Mbarara', 'latitude' => -0.6072, 'longitude' => 30.6545],
-            ['name' => 'Fort Portal', 'city' => 'Fort Portal', 'latitude' => 0.6710, 'longitude' => 30.2748],
-            ['name' => 'Kasese', 'city' => 'Kasese', 'latitude' => 0.1833, 'longitude' => 30.0833],
-            ['name' => 'Hoima', 'city' => 'Hoima', 'latitude' => 1.4356, 'longitude' => 31.3556],
-            ['name' => 'Bushenyi', 'city' => 'Bushenyi', 'latitude' => -0.5833, 'longitude' => 30.2167],
-            ['name' => 'Kabale', 'city' => 'Kabale', 'latitude' => -1.2486, 'longitude' => 29.9897],
+            ['name' => 'Mbarara', 'code' => 'MBR', 'city' => 'Mbarara', 'latitude' => -0.6072, 'longitude' => 30.6545],
+            ['name' => 'Fort Portal', 'code' => 'FPT', 'city' => 'Fort Portal', 'latitude' => 0.6710, 'longitude' => 30.2748],
+            ['name' => 'Kasese', 'code' => 'KSE', 'city' => 'Kasese', 'latitude' => 0.1833, 'longitude' => 30.0833],
+            ['name' => 'Hoima', 'code' => 'HOI', 'city' => 'Hoima', 'latitude' => 1.4356, 'longitude' => 31.3556],
+            ['name' => 'Bushenyi', 'code' => 'BSH', 'city' => 'Bushenyi', 'latitude' => -0.5833, 'longitude' => 30.2167],
+            ['name' => 'Kabale', 'code' => 'KBL', 'city' => 'Kabale', 'latitude' => -1.2486, 'longitude' => 29.9897],
         ];
 
         /** @var User $systemUser */
@@ -59,6 +59,7 @@ class ZoneSeeder extends Seeder
                 Zone::query()->updateOrCreate(
                     ['name' => $district['name'], 'city' => $district['city']],
                     [
+                        'code' => $district['code'],
                         'country' => 'Uganda',
                         'boundary' => $this->boundingBox($district['latitude'], $district['longitude']),
                         'currency_code' => 'UGX',

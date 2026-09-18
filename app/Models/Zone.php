@@ -9,6 +9,7 @@ class Zone extends BaseModel
 {
     protected $fillable = [
         'name',
+        'code',
         'city',
         'country',
         'boundary',

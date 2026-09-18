@@ -86,6 +86,11 @@ readonly class RiderProfileService
         });
     }
 
+    public function generateRiderRef(int $userId, string $districtCode): string
+    {
+        return 'SWFT'.strtoupper($districtCode).str_pad((string) $userId, 4, '0', STR_PAD_LEFT);
+    }
+
     /**
      * @param  array<string, mixed>  $data
      */

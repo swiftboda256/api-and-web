@@ -21,6 +21,8 @@ class ZonesTable
             ->columns([
                 TextColumn::make('name')
                     ->searchable(),
+                TextColumn::make('code')
+                    ->searchable(),
                 TextColumn::make('city')
                     ->searchable(),
                 TextColumn::make('country')

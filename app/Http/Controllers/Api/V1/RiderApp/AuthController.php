@@ -10,9 +10,9 @@ use App\Models\RiderProfile;
 use App\Models\User;
 use App\Models\Zone;
 use App\Services\Auth\OtpService;
+use App\Services\Rider\RiderProfileService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
@@ -31,7 +31,7 @@ class AuthController extends Controller
         return self::success(null, 'OTP has been sent');
     }
 
-    public function verifyOtp(VerifyOtpRequest $request, OtpService $otpService): JsonResponse
+    public function verifyOtp(VerifyOtpRequest $request, OtpService $otpService, RiderProfileService $riderProfileService): JsonResponse
     {
         $phone = $request->string('phone')->toString();
         $code = $request->string('code')->toString();
@@ -52,10 +52,12 @@ class AuthController extends Controller
             $user->phone_verified_at = now();
             $user->assignRole('rider');
 
+            $homeZone = Zone::query()->where('name', 'Kampala')->first();
+
             RiderProfile::query()->create([
                 'user_id' => $user->id,
-                'rider_ref' => $this->generateRiderRef(),
-                'home_zone_id' => Zone::query()->where('name', 'Kampala')->value('id'),
+                'rider_ref' => $riderProfileService->generateRiderRef($user->id, $homeZone?->code ?? ''),
+                'home_zone_id' => $homeZone?->id,
             ]);
         }
 
@@ -94,12 +96,4 @@ class AuthController extends Controller
         return self::success();
     }
 
-    private function generateRiderRef(): string
-    {
-        do {
-            $riderRef = 'RDR-'.now()->format('ymd').strtoupper(Str::random(6));
-        } while (RiderProfile::query()->where('rider_ref', $riderRef)->exists());
-
-        return $riderRef;
-    }
 }
