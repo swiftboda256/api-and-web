@@ -60,6 +60,14 @@ class Vehicle extends BaseModel
     }
 
     /**
+     * @return HasMany<VehicleImage, $this>
+     */
+    public function images(): HasMany
+    {
+        return $this->hasMany(VehicleImage::class);
+    }
+
+    /**
      * @return HasMany<Trip, $this>
      */
     public function trips(): HasMany

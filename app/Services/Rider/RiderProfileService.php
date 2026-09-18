@@ -6,6 +6,7 @@ use App\Models\Document;
 use App\Models\RiderProfile;
 use App\Models\User;
 use App\Models\Vehicle;
+use App\Models\VehicleImage;
 use Clickbar\Magellan\Data\Geometries\Point;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Arr;
@@ -78,11 +79,13 @@ readonly class RiderProfileService
                 fn ($value): bool => $value !== null,
             );
 
-            if ($vehicleFields !== []) {
-                $this->updateVehicle($riderProfile, $vehicleFields);
+            $vehicleImages = $data['vehicle_images'] ?? [];
+
+            if ($vehicleFields !== [] || $vehicleImages !== []) {
+                $this->updateVehicle($riderProfile, $vehicleFields, $vehicleImages);
             }
 
-            return $user->setRelation('riderProfile', $riderProfile->fresh(['vehicle']));
+            return $user->setRelation('riderProfile', $riderProfile->fresh(['vehicle.images']));
         });
     }
 
@@ -93,8 +96,9 @@ readonly class RiderProfileService
 
     /**
      * @param  array<string, mixed>  $data
+     * @param  array<int, UploadedFile>  $images
      */
-    private function updateVehicle(RiderProfile $riderProfile, array $data): void
+    private function updateVehicle(RiderProfile $riderProfile, array $data, array $images = []): void
     {
         $vehicle = $riderProfile->vehicle;
 
@@ -105,18 +109,20 @@ readonly class RiderProfileService
                 ]);
             }
 
-            Vehicle::query()->create([
+            $vehicle = Vehicle::query()->create([
                 ...$data,
                 'rider_profile_id' => $riderProfile->id,
                 'status' => 'pending',
             ]);
-
-            return;
+        } else {
+            $vehicle->fill($data);
+            $vehicle->status = 'pending';
+            $vehicle->save();
         }
 
-        $vehicle->fill($data);
-        $vehicle->status = 'pending';
-        $vehicle->save();
+        foreach ($images as $image) {
+            $this->storeVehicleImage($vehicle, $image);
+        }
     }
 
     private function storeAvatar(User $user, UploadedFile $file): string
@@ -160,5 +166,19 @@ readonly class RiderProfileService
                 'reviewed_at' => null,
             ]
         );
+    }
+
+    private function storeVehicleImage(Vehicle $vehicle, UploadedFile $file): void
+    {
+        $path = $file->store("vehicles/{$vehicle->id}", 'public');
+
+        if ($path === false) {
+            throw ValidationException::withMessages(['vehicle_images' => 'Failed to upload one or more vehicle images.']);
+        }
+
+        VehicleImage::query()->create([
+            'vehicle_id' => $vehicle->id,
+            'file_path' => $path,
+        ]);
     }
 }
