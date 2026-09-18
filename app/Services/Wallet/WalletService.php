@@ -6,6 +6,7 @@ use App\Models\Transaction;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WithdrawalRequest;
+use App\Services\Auth\OtpService;
 use App\Services\Payment\Constants\MobileMoneyTransactionStatus;
 use App\Services\Payment\Contracts\PaymentGateway;
 use Carbon\CarbonImmutable;
@@ -17,9 +18,14 @@ use Illuminate\Validation\ValidationException;
 
 readonly class WalletService
 {
+    private const string PIN_RESET_CHANNEL = 'sms';
+
+    private const string PIN_RESET_PURPOSE = 'wallet_pin_reset';
+
     public function __construct(
         private PaymentGateway $paymentGateway,
         private WithdrawChargeService $withdrawChargeService,
+        private OtpService $otpService,
     ) {}
 
     /**
@@ -67,6 +73,27 @@ readonly class WalletService
                 ]);
             }
         }
+
+        $wallet->update(['pin' => $data['new_pin']]);
+
+        return $wallet;
+    }
+
+    public function requestPinReset(User $user): void
+    {
+        $this->getWallet($user);
+
+        $this->otpService->generateOTP($user->phone, $user->email, self::PIN_RESET_CHANNEL, self::PIN_RESET_PURPOSE);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    public function resetPin(User $user, array $data): Wallet
+    {
+        $wallet = $this->getWallet($user);
+
+        $this->otpService->verify($user->phone, $data['code'], self::PIN_RESET_PURPOSE);
 
         $wallet->update(['pin' => $data['new_pin']]);
 
