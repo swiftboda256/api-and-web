@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\SurgePricingSchedules\Tables;
 
+use Filament\Actions\ActionGroup;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -38,11 +39,9 @@ class SurgePricingSchedulesTable
                 TextColumn::make('fixed_amount')
                     ->numeric()
                     ->sortable(),
-                ToggleColumn::make('is_active'),
                 TextColumn::make('created_at')
                     ->dateTime()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
+                    ->sortable(),
                 TextColumn::make('updated_at')
                     ->dateTime()
                     ->sortable()
@@ -67,7 +66,9 @@ class SurgePricingSchedulesTable
                 TrashedFilter::make(),
             ])
             ->recordActions([
-                EditAction::make(),
+                ActionGroup::make([
+                    EditAction::make(),
+                ]),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([

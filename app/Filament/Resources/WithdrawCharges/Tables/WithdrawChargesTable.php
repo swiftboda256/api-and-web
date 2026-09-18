@@ -40,7 +40,6 @@ class WithdrawChargesTable
                 TextColumn::make('airtel_charge')
                     ->numeric()
                     ->sortable(),
-                ToggleColumn::make('is_active'),
                 TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable(),

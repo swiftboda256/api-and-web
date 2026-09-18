@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Wallets\Tables;
 
+use Filament\Actions\ActionGroup;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -18,14 +19,12 @@ class WalletsTable
     {
         return $table
             ->columns([
-                TextColumn::make('user.id')
+                TextColumn::make('user.name')
                     ->searchable(),
                 TextColumn::make('balance')
                     ->numeric()
                     ->sortable(),
                 TextColumn::make('currency_code')
-                    ->searchable(),
-                TextColumn::make('pin')
                     ->searchable(),
                 TextColumn::make('status')
                     ->searchable(),
@@ -37,15 +36,17 @@ class WalletsTable
                     ->dateTime()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('created_by')
+                TextColumn::make('creator.name')
                     ->numeric()
                     ->sortable(),
-                TextColumn::make('updated_by')
+                TextColumn::make('updater.name')
                     ->numeric()
-                    ->sortable(),
-                TextColumn::make('deleted_by')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('deleter.name')
                     ->numeric()
-                    ->sortable(),
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('deleted_at')
                     ->dateTime()
                     ->sortable()
@@ -55,8 +56,10 @@ class WalletsTable
                 TrashedFilter::make(),
             ])
             ->recordActions([
-                ViewAction::make(),
-                EditAction::make(),
+                ActionGroup::make([
+                    ViewAction::make(),
+                    EditAction::make(),
+                ]),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
