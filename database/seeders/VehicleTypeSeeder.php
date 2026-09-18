@@ -17,6 +17,7 @@ class VehicleTypeSeeder extends Seeder
         $vehicleTypes = [
             ['name' => 'Motorcycle', 'code' => 'motorcycle', 'capacity' => 1],
             ['name' => 'Car', 'code' => 'car', 'capacity' => 4],
+            ['name' => 'Car XL', 'code' => 'car_xl', 'capacity' => 7],
         ];
 
         $actingUser = Auth::user();
