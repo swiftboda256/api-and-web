@@ -54,10 +54,13 @@ class AuthController extends Controller
 
             $homeZone = Zone::query()->where('name', 'Kampala')->first();
 
-            RiderProfile::query()->create([
+            $riderProfile = RiderProfile::query()->create([
                 'user_id' => $user->id,
-                'rider_ref' => $riderProfileService->generateRiderRef($user->id, $homeZone?->code ?? ''),
                 'home_zone_id' => $homeZone?->id,
+            ]);
+
+            $riderProfile->update([
+                'rider_ref' => $riderProfileService->generateRiderRef($riderProfile->id, $homeZone?->code ?? ''),
             ]);
         }
 
