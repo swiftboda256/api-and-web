@@ -45,6 +45,9 @@ class UpdateProfileRequest extends FormRequest
             'plate_number' => ['sometimes', 'nullable', 'string', 'max:255', Rule::unique('vehicles', 'plate_number')->ignore($this->user()?->riderProfile?->vehicle?->id)],
             'registration_number' => ['sometimes', 'nullable', 'string', 'max:255'],
             'insurance_expiry_at' => ['sometimes', 'nullable', 'date'],
+
+            'vehicle_images' => ['sometimes', 'array', 'max:10'],
+            'vehicle_images.*' => ['file', 'image', 'mimes:jpg,jpeg,png', 'max:5120'],
         ];
     }
 }
