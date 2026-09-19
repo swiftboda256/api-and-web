@@ -25,11 +25,11 @@ readonly class TransactionService
     {
         Log::info('yo.ipn.received', $payload);
 
-//        if (! $yoService->verifyIpnSignature($payload, $signature)) {
-//            Log::warning('yo.ipn.invalid_signature', $payload);
-//
-//            return;
-//        }
+        if (! $yoService->verifyIpnSignature($payload, $signature)) {
+            Log::warning('yo.ipn.invalid_signature', $payload);
+
+            return;
+        }
 
         $externalReference = $payload['external_ref'] ?? null;
 
