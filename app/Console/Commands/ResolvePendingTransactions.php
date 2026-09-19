@@ -19,7 +19,7 @@ class ResolvePendingTransactions extends Command
         Transaction::query()
             ->where('status', 'pending')
             ->whereNotNull('gateway_reference')
-            ->whereIn('transaction_type', ['topup', 'trip_payment', 'withdrawal'])
+            ->whereIn('transaction_type', ['withdrawal'])
             ->select('id')
             ->chunkById(100, function ($transactions) use (&$count): void {
                 foreach ($transactions as $transaction) {
