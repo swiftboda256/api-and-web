@@ -67,9 +67,11 @@ readonly class CheckoutService
 
         $baseFare = (float) $pricingRule->base_fare;
         $perKmRate = (float) $pricingRule->per_km_rate + (float) ($surgeSchedule->fixed_amount ?? 0);
-        $freeDistanceKm = $pricingRule->vehicleType->code === 'car'
-            ? (float) Configuration::get('free_distance_km', 4)
-            : 0.0;
+        $freeDistanceKm = match ($pricingRule->vehicleType->code) {
+            'car' => (float) Configuration::get('free_distance_km', 4),
+            'motorcycle' => (float) Configuration::get('free_distance_km_motorcycle', 2),
+            default => 0.0,
+        };
         $chargeableDistanceKm = max(0.0, $distanceKm - $freeDistanceKm);
         $distanceFare = round($perKmRate * $chargeableDistanceKm, 2);
         $timeFare = round((float) $pricingRule->per_minute_rate * $durationMinutes, 2);

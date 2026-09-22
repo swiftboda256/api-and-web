@@ -85,7 +85,17 @@ class ConfigurationSeeder extends Seeder
             [
                 'value' => 4,
                 'group' => 'trip',
-                'description' => 'Distance in kilometers covered by the base fare before the per-km distance charge starts applying.',
+                'description' => 'Distance in kilometers covered by the base fare before the per-km distance charge starts applying (car).',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'free_distance_km_motorcycle'],
+            [
+                'value' => 2,
+                'group' => 'trip',
+                'description' => 'Distance in kilometers covered by the base fare before the per-km distance charge starts applying (motorcycle).',
                 'is_public' => false,
             ],
         );
