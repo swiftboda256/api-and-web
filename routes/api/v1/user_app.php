@@ -57,11 +57,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('order-ride', [TripController::class, 'store'])->name('order-ride');
         Route::post('order-delivery', [TripController::class, 'store'])->name('order-delivery');
         Route::post('order-ride-share', [TripController::class, 'store'])->name('order-ride-share');
-//        Route::post('order-delivery-share', [TripController::class, 'store'])->name('order-delivery-share');
+        Route::post('order-delivery-share', [TripController::class, 'store'])->name('order-delivery-share');
         Route::patch('cancel-ride/{trip}', [TripController::class, 'cancel'])->name('cancel-ride');
         Route::patch('cancel-delivery/{trip}', [TripController::class, 'cancel'])->name('cancel-delivery');
         Route::patch('cancel-ride-share/{tripPassenger}', [TripController::class, 'cancelPassenger'])->name('cancel-ride-share')->whereNumber('tripPassenger');
-//        Route::patch('cancel-delivery-share/{delivery}', [TripController::class, 'cancelDelivery'])->name('cancel-delivery-passenger')->whereNumber('delivery');
+        Route::patch('cancel-delivery-share/{delivery}', [TripController::class, 'cancelDelivery'])->name('cancel-delivery-passenger')->whereNumber('delivery');
         Route::post('/{trip}/rate', [TripController::class, 'rateRider'])->name('rate-rider')->whereNumber('trip');
         Route::post('ride-share/{tripPassenger}/rate', [TripController::class, 'ratePassengerDriver'])->name('rate-ride-share')->whereNumber('tripPassenger');
         Route::post('delivery/{delivery}/rate', [TripController::class, 'rateDeliveryDriver'])->name('rate-delivery')->whereNumber('delivery');
