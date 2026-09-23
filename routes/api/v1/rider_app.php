@@ -52,6 +52,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('{trip}/start', [RideController::class, 'start'])->name('start');
         Route::patch('{trip}/cancel', [RideController::class, 'cancel'])->name('cancel');
         Route::patch('{trip}/end', [RideController::class, 'end'])->name('end');
+        Route::patch('{trip}/passengers/{passenger}/pickup', [RideController::class, 'pickUpPassenger'])->name('passengers.pickup')->whereNumber(['trip', 'passenger']);
+        Route::patch('{trip}/passengers/{passenger}/dropoff', [RideController::class, 'dropOffPassenger'])->name('passengers.dropoff')->whereNumber(['trip', 'passenger']);
+        Route::patch('{trip}/deliveries/{delivery}/pickup', [RideController::class, 'pickUpDelivery'])->name('deliveries.pickup')->whereNumber(['trip', 'delivery']);
+        Route::patch('{trip}/deliveries/{delivery}/dropoff', [RideController::class, 'dropOffDelivery'])->name('deliveries.dropoff')->whereNumber(['trip', 'delivery']);
         Route::post('{trip}/location', [RideController::class, 'logLocation'])->name('log-location');
     });
 

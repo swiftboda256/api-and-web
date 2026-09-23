@@ -2,8 +2,9 @@
 
 namespace App\Services\Wallet;
 
+use App\Models\DeliveryDetails;
 use App\Models\Transaction;
-use App\Models\Trip;
+use App\Models\TripPassenger;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WithdrawalRequest;
@@ -147,6 +148,10 @@ readonly class TransactionService
      * Trip payment (mobile money): mark the customer's payment
      * completed/failed, then on success credit the rider's pending payout
      * and record the commission, or mark the payout failed otherwise.
+     *
+     * `reference_type` is TripPassenger::class (a ride/ride_share passenger's segment) or
+     * DeliveryDetails::class (a delivery/delivery_share segment) -- both settle the same way,
+     * just against a different owning record.
      */
     private function processTripPayment(Transaction $payment, bool $succeeded, ?string $networkReference, ?string $failureReason): void
     {
@@ -156,13 +161,21 @@ readonly class TransactionService
             'failure_reason' => $succeeded ? null : ($failureReason ?? 'Yo! Payments reported this transaction as failed.'),
         ]);
 
-        if ($payment->reference_type !== Trip::class || $payment->reference_id === null) {
+        if (! in_array($payment->reference_type, [TripPassenger::class, DeliveryDetails::class], true) || $payment->reference_id === null) {
             return;
         }
 
-        $trip = Trip::query()->whereKey($payment->reference_id)->lockForUpdate()->first();
+        $settleable = match ($payment->reference_type) {
+            TripPassenger::class => TripPassenger::query()->whereKey($payment->reference_id)->lockForUpdate()->first(),
+            DeliveryDetails::class => DeliveryDetails::query()->whereKey($payment->reference_id)->lockForUpdate()->first(),
+        };
+
+        // A ride passenger's fare/payment data lives on its own TripFareBreakdown row;
+        // a delivery still carries it directly (not moved there yet).
+        $paymentRecord = $settleable instanceof TripPassenger ? $settleable->fareBreakdown : $settleable;
+
         $payout = Transaction::query()
-            ->where('reference_type', Trip::class)
+            ->where('reference_type', $payment->reference_type)
             ->where('reference_id', $payment->reference_id)
             ->where('transaction_type', 'trip_payout')
             ->where('status', 'pending')
@@ -184,10 +197,10 @@ readonly class TransactionService
                     'failure_reason' => null,
                 ]);
 
-                if ($trip) {
-                    $commissionAmount = round((float) $payment->amount - (float) $payout->amount, 2);
+                $commissionAmount = round((float) $payment->amount - (float) $payout->amount, 2);
 
-                    $this->recordCommissionTransaction($trip, 'mobile_money', $commissionAmount);
+                if ($settleable && $paymentRecord) {
+                    $this->recordPassengerCommissionTransaction($settleable, 'mobile_money', $commissionAmount, $paymentRecord->currency_code);
                 }
             }
         } elseif ($payout) {
@@ -197,8 +210,10 @@ readonly class TransactionService
             ]);
         }
 
-        if ($trip && ($succeeded || $payout === null || $payout->status === 'failed')) {
-            $trip->update(['payment_status' => $succeeded ? 'paid' : 'failed']);
+        $shouldUpdatePaymentStatus = $succeeded || $payout === null || $payout->status === 'failed';
+
+        if ($paymentRecord && $shouldUpdatePaymentStatus) {
+            $paymentRecord->update(['payment_status' => $succeeded ? 'paid' : 'failed']);
         }
     }
 
@@ -284,13 +299,14 @@ readonly class TransactionService
         ]);
     }
 
-    public function recordCommissionTransaction(Trip $trip, string $method, float $commissionAmount): void
+    public function recordPassengerCommissionTransaction(TripPassenger|DeliveryDetails $settleable, string $method, float $commissionAmount, string $currencyCode): void
     {
         if ($commissionAmount <= 0) {
             return;
         }
 
         $systemUser = User::role('system')->firstOrFail();
+        $label = $settleable instanceof DeliveryDetails ? 'delivery' : 'passenger';
 
         Transaction::query()->create([
             'user_id' => $systemUser->id,
@@ -299,10 +315,10 @@ readonly class TransactionService
             'direction' => 'credit',
             'transaction_type' => 'commission',
             'amount' => $commissionAmount,
-            'currency_code' => $trip->currency_code,
-            'narration' => "Commission for trip {$trip->trip_number}",
-            'reference_type' => Trip::class,
-            'reference_id' => $trip->id,
+            'currency_code' => $currencyCode,
+            'narration' => "Commission for trip {$settleable->trip->trip_number} ({$label} #{$settleable->id})",
+            'reference_type' => $settleable::class,
+            'reference_id' => $settleable->id,
             'status' => 'completed',
         ]);
     }

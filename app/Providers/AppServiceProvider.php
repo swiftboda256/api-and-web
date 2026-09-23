@@ -7,6 +7,8 @@ use App\Models\Rating;
 use App\Observers\RatingObserver;
 use App\Services\Payment\Contracts\PaymentGateway;
 use App\Services\Payment\YoPaymentService;
+use App\Services\Routing\Contracts\RoutingGateway;
+use App\Services\Routing\GoogleRoutesGateway;
 use App\Services\Sms\Contracts\SmsGateway;
 use App\Services\Sms\EgoSmsGateway;
 use Carbon\CarbonImmutable;
@@ -25,6 +27,7 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->bind(SmsGateway::class, EgoSmsGateway::class);
         $this->app->bind(PaymentGateway::class, YoPaymentService::class);
+        $this->app->bind(RoutingGateway::class, GoogleRoutesGateway::class);
     }
 
     /**

@@ -3,10 +3,15 @@
 namespace App\Models;
 
 use Clickbar\Magellan\Data\Geometries\Polygon;
+use Database\Factories\ZoneFactory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Zone extends BaseModel
 {
+    /** @use HasFactory<ZoneFactory> */
+    use HasFactory;
+
     protected $fillable = [
         'name',
         'code',

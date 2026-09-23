@@ -1,14 +1,17 @@
 <x-filament-panels::page>
     @php($trip = $this->trip)
+    @php($manifestTotalFare = $this->manifestTotalFare())
+    @php($manifestCount = $this->manifestCount())
 
     <div class="space-y-6">
-        @include('filament.resources.trips.partials.info-card', ['trip' => $trip])
+        @include('filament.resources.trips.partials.info-card', ['trip' => $trip, 'manifestTotalFare' => $manifestTotalFare, 'manifestCount' => $manifestCount])
 
         <div class="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-white/10 dark:bg-gray-900">
             <div class="border-b border-gray-200 px-2 dark:border-white/10">
                 <nav class="-mb-px flex gap-1 overflow-x-auto" aria-label="Trip detail tabs">
                     @foreach ([
                         'map' => 'Map',
+                        'manifest' => 'Manifest',
                         'cost-breakdown' => 'Cost breakdown',
                         'client-rider' => 'Client & Rider',
                     ] as $key => $label)
@@ -32,8 +35,12 @@
                         @include('filament.resources.trips.tabs.map', ['trip' => $trip])
                         @break
 
+                    @case('manifest')
+                        @include('filament.resources.trips.tabs.manifest', ['trip' => $trip])
+                        @break
+
                     @case('cost-breakdown')
-                        @include('filament.resources.trips.tabs.cost-breakdown', ['trip' => $trip])
+                        @include('filament.resources.trips.tabs.cost-breakdown', ['trip' => $trip, 'manifestTotalFare' => $manifestTotalFare])
                         @break
 
                     @case('client-rider')

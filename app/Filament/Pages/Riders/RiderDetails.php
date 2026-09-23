@@ -139,27 +139,47 @@ class RiderDetails extends Page
         $search = trim($this->tripsSearch);
         $direction = $this->tripsSortDirection === 'asc' ? 'asc' : 'desc';
 
+        $nameMatch = function ($query) use ($search): void {
+            $like = "%{$search}%";
+
+            $query->where('first_name', 'ilike', $like)
+                ->orWhere('last_name', 'ilike', $like)
+                ->orWhere('other_name', 'ilike', $like)
+                ->orWhere('phone', 'ilike', $like);
+        };
+
         $query = Trip::query()
             ->where('rider_id', $this->recordId)
-            ->with(['customer', 'vehicleType'])
-            ->when($search !== '', function ($query) use ($search): void {
+            ->with(['passengers.customer', 'passengers.fareBreakdown', 'deliveries.sender', 'vehicleType'])
+            ->when($search !== '', function ($query) use ($search, $nameMatch): void {
                 $like = "%{$search}%";
 
-                $query->where(function ($query) use ($like): void {
+                $query->where(function ($query) use ($like, $nameMatch): void {
                     $query->where('trip_number', 'ilike', $like)
-                        ->orWhereHas('customer', function ($query) use ($like): void {
-                            $query->where('first_name', 'ilike', $like)
-                                ->orWhere('last_name', 'ilike', $like)
-                                ->orWhere('other_name', 'ilike', $like)
-                                ->orWhere('phone', 'ilike', $like);
-                        });
+                        ->orWhereHas('passengers.customer', $nameMatch)
+                        ->orWhereHas('deliveries.sender', $nameMatch);
                 });
             })
             ->when($this->tripsType !== '', fn ($query) => $query->where('type', $this->tripsType))
             ->when($this->tripsStatus !== '', fn ($query) => $query->where('status', $this->tripsStatus));
 
         if ($this->tripsSort === 'fare') {
-            $query->orderByRaw("COALESCE(final_fare, estimated_fare) {$direction}");
+            // Trips carry no fare of their own -- order by the total across everyone on the
+            // trip (one passenger/delivery for a solo trip, several for a shared one).
+            // Ride/ride_share's fare lives on trip_fare_breakdowns now (one row per
+            // passenger, joined via passenger_id), not on trip_passengers directly.
+            $query->orderByRaw(<<<SQL
+                (CASE
+                    WHEN trips.type IN ('delivery', 'delivery_share')
+                        THEN (SELECT COALESCE(SUM(COALESCE(final_fare, estimated_fare)), 0) FROM delivery_details WHERE delivery_details.trip_id = trips.id)
+                    ELSE (
+                        SELECT COALESCE(SUM(COALESCE(tfb.final_fare, tfb.estimated_fare)), 0)
+                        FROM trip_passengers tp
+                        JOIN trip_fare_breakdowns tfb ON tfb.passenger_id = tp.id
+                        WHERE tp.trip_id = trips.id
+                    )
+                END) {$direction}
+                SQL);
         } else {
             $query->orderBy('requested_at', $direction);
         }

@@ -43,6 +43,10 @@ return [
         'priority' => env('EGOSMS_PRIORITY', '0'),
     ],
 
+    'google' => [
+        'routes_api_key' => env('GOOGLE_ROUTES_API_KEY'),
+    ],
+
     'yo' => [
         'base_url' => env('YO_BASE_URL', 'https://paymentsapi1.yo.co.ug/ybs/task.php'),
         'api_username' => env('YO_API_USERNAME'),

@@ -1,5 +1,6 @@
 @php
-    $customer = $trip->customer;
+    $isShared = in_array($trip->type, ['ride_share', 'delivery_share'], true);
+    $customer = $trip->primaryCustomer();
     $rider = $trip->rider;
     $riderProfile = $rider?->riderProfile;
     $vehicle = $riderProfile?->vehicle;
@@ -9,7 +10,11 @@
     <div class="rounded-lg border border-gray-200 p-6 dark:border-white/10">
         <h3 class="text-sm font-semibold text-gray-950 dark:text-white">Client</h3>
 
-        @if ($customer)
+        @if ($isShared)
+            <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">
+                This is a shared trip with multiple riders -- see the Manifest tab for each one individually.
+            </p>
+        @elseif ($customer)
             <div class="mt-4 flex items-center gap-3">
                 @include('filament.pages.riders.partials.avatar', ['user' => $customer, 'size' => 'md'])
 

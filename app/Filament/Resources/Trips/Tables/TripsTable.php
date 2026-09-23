@@ -23,6 +23,8 @@ class TripsTable
                 TextColumn::make('trip_number')
                     ->searchable(),
                 TextColumn::make('customer.name')
+                    ->label('First customer')
+                    ->description(fn ($record) => $record->passenger_count > 1 ? "+{$record->passenger_count} on this trip" : null)
                     ->searchable(),
                 TextColumn::make('type')
                     ->searchable(),
@@ -65,6 +67,13 @@ class TripsTable
                         'in_progress' => 'In progress',
                         'completed' => 'Completed',
                         'cancelled' => 'Cancelled',
+                    ]),
+                SelectFilter::make('type')
+                    ->options([
+                        'ride' => 'Ride',
+                        'ride_share' => 'Ride share',
+                        'delivery' => 'Delivery',
+                        'delivery_share' => 'Delivery share',
                     ]),
                 TrashedFilter::make(),
             ])

@@ -17,7 +17,7 @@ class EstimateTripRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'type' => ['required', 'in:ride,delivery'],
+            'type' => ['required', 'in:ride,delivery,ride_share,delivery_share'],
             'vehicle_type_id' => ['required', 'integer', 'exists:vehicle_types,id'],
             'pickup_latitude' => ['required', 'numeric', 'between:-90,90'],
             'pickup_longitude' => ['required', 'numeric', 'between:-180,180'],

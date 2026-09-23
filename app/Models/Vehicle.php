@@ -2,12 +2,17 @@
 
 namespace App\Models;
 
+use Database\Factories\VehicleFactory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 class Vehicle extends BaseModel
 {
+    /** @use HasFactory<VehicleFactory> */
+    use HasFactory;
+
     protected $fillable = [
         'rider_profile_id',
         'vehicle_type_id',

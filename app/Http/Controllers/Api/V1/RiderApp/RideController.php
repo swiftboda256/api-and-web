@@ -9,7 +9,9 @@ use App\Http\Requests\Api\V1\RiderApp\Ride\IndexRideRequest;
 use App\Http\Requests\Api\V1\RiderApp\Ride\LogRideLocationRequest;
 use App\Http\Requests\Api\V1\RiderApp\Ride\NearbyRidesRequest;
 use App\Http\Resources\Api\V1\RiderApp\RideCollection;
+use App\Http\Resources\Api\V1\RiderApp\RideDeliveryResource;
 use App\Http\Resources\Api\V1\RiderApp\RideLocationResource;
+use App\Http\Resources\Api\V1\RiderApp\RidePassengerResource;
 use App\Http\Resources\Api\V1\RiderApp\RideResource;
 use App\Models\User;
 use App\Services\Trip\RiderTripService;
@@ -80,6 +82,38 @@ class RideController extends Controller
         $user = $request->user();
 
         return self::success(new RideResource($riderTripService->end($user, $trip, $request->file('proof_of_delivery_photo'))));
+    }
+
+    public function pickUpPassenger(Request $request, int $trip, int $passenger, RiderTripService $riderTripService): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        return self::success(new RidePassengerResource($riderTripService->pickUpPassenger($user, $trip, $passenger)));
+    }
+
+    public function dropOffPassenger(Request $request, int $trip, int $passenger, RiderTripService $riderTripService): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        return self::success(new RidePassengerResource($riderTripService->dropOffPassenger($user, $trip, $passenger)));
+    }
+
+    public function pickUpDelivery(Request $request, int $trip, int $delivery, RiderTripService $riderTripService): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        return self::success(new RideDeliveryResource($riderTripService->pickUpDelivery($user, $trip, $delivery)));
+    }
+
+    public function dropOffDelivery(Request $request, int $trip, int $delivery, RiderTripService $riderTripService): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        return self::success(new RideDeliveryResource($riderTripService->dropOffDelivery($user, $trip, $delivery)));
     }
 
     public function logLocation(LogRideLocationRequest $request, int $trip, RiderTripService $riderTripService): JsonResponse

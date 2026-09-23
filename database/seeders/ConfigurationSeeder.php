@@ -139,5 +139,125 @@ class ConfigurationSeeder extends Seeder
                 'is_public' => false,
             ],
         );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'ride_share_discount_percentage'],
+            [
+                'value' => 20,
+                'group' => 'ride_share',
+                'description' => 'Percentage discount applied to a passenger\'s own segment fare when they share a ride, relative to what that segment would cost as a solo ride.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'ride_share_max_detour_minutes'],
+            [
+                'value' => 7,
+                'group' => 'ride_share',
+                'description' => 'Maximum extra driving time (minutes) a new passenger\'s pickup+dropoff may add to an ongoing ride-share trip\'s remaining route before it is rejected as a match.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'ride_share_max_detour_km'],
+            [
+                'value' => 3,
+                'group' => 'ride_share',
+                'description' => 'Maximum extra driving distance (km) a new passenger\'s pickup+dropoff may add to an ongoing ride-share trip\'s remaining route before it is rejected as a match.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'ride_share_candidate_search_radius_km'],
+            [
+                'value' => 5,
+                'group' => 'ride_share',
+                'description' => 'Radius in kilometers around a new ride-share request\'s pickup point used to shortlist ongoing ride-share trips as merge candidates, before the more expensive routing/detour check runs.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'ride_share_max_bearing_deviation_degrees'],
+            [
+                'value' => 100,
+                'group' => 'ride_share',
+                'description' => 'Maximum degrees between an ongoing ride-share trip\'s direction of travel and the bearing to a new pickup, before it\'s rejected as going the wrong way (cheap pre-filter, no routing call).',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'ride_share_max_candidates'],
+            [
+                'value' => 5,
+                'group' => 'ride_share',
+                'description' => 'Maximum number of nearby ongoing ride-share trips evaluated with a routing/detour check per request, to bound routing API calls.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'delivery_share_discount_percentage'],
+            [
+                'value' => 20,
+                'group' => 'delivery_share',
+                'description' => 'Percentage discount applied to a delivery\'s own segment fare when it\'s pooled, relative to what that segment would cost as a standalone delivery.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'delivery_share_max_detour_minutes'],
+            [
+                'value' => 10,
+                'group' => 'delivery_share',
+                'description' => 'Maximum extra driving time (minutes) a new delivery\'s pickup+dropoff may add to an ongoing pooled-delivery trip\'s remaining route before it is rejected as a match.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'delivery_share_max_detour_km'],
+            [
+                'value' => 5,
+                'group' => 'delivery_share',
+                'description' => 'Maximum extra driving distance (km) a new delivery\'s pickup+dropoff may add to an ongoing pooled-delivery trip\'s remaining route before it is rejected as a match.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'delivery_share_candidate_search_radius_km'],
+            [
+                'value' => 5,
+                'group' => 'delivery_share',
+                'description' => 'Radius in kilometers around a new pooled-delivery request\'s pickup point used to shortlist ongoing pooled-delivery trips as merge candidates.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'delivery_share_max_bearing_deviation_degrees'],
+            [
+                'value' => 100,
+                'group' => 'delivery_share',
+                'description' => 'Maximum degrees between an ongoing pooled-delivery trip\'s direction of travel and the bearing to a new pickup, before it\'s rejected as going the wrong way.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'delivery_share_max_candidates'],
+            [
+                'value' => 5,
+                'group' => 'delivery_share',
+                'description' => 'Maximum number of nearby ongoing pooled-delivery trips evaluated with a routing/detour check per request, to bound routing API calls.',
+                'is_public' => false,
+            ],
+        );
     }
 }

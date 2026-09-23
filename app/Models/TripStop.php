@@ -9,6 +9,9 @@ class TripStop extends BaseModel
 {
     protected $fillable = [
         'trip_id',
+        'trip_passenger_id',
+        'stop_type',
+        'seats_delta',
         'sequence',
         'location',
         'address',
@@ -19,6 +22,7 @@ class TripStop extends BaseModel
     {
         return [
             'location' => Point::class,
+            'seats_delta' => 'integer',
             'arrived_at' => 'datetime',
         ];
     }
@@ -29,5 +33,15 @@ class TripStop extends BaseModel
     public function trip(): BelongsTo
     {
         return $this->belongsTo(Trip::class);
+    }
+
+    /**
+     * Ride-share only: which passenger this pickup/dropoff stop belongs to.
+     *
+     * @return BelongsTo<TripPassenger, $this>
+     */
+    public function tripPassenger(): BelongsTo
+    {
+        return $this->belongsTo(TripPassenger::class);
     }
 }

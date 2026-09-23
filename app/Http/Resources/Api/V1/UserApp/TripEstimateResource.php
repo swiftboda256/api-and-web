@@ -26,6 +26,7 @@ class TripEstimateResource extends JsonResource
             'surge_amount' => $estimate['surge_amount'],
             'discount_amount' => $estimate['discount_amount'],
             'promo_code' => $estimate['promo_code'],
+            'discount_percentage' => $estimate['discount_percentage'] ?? null,
             'estimated_fare' => $estimate['estimated_fare'],
         ];
     }

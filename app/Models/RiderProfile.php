@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Clickbar\Magellan\Data\Geometries\Point;
+use Database\Factories\RiderProfileFactory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -13,6 +15,9 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
  */
 class RiderProfile extends BaseModel
 {
+    /** @use HasFactory<RiderProfileFactory> */
+    use HasFactory;
+
     protected $fillable = [
         'user_id',
         'rider_ref',

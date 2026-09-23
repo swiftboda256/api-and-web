@@ -2,27 +2,59 @@
 
 namespace App\Models;
 
+use Carbon\CarbonImmutable;
 use Clickbar\Magellan\Data\Geometries\Point;
+use Database\Factories\TripFactory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 
+/**
+ * @property 'ride'|'delivery'|'ride_share'|'delivery_share' $type
+ * @property CarbonImmutable $requested_at
+ * @property CarbonImmutable|null $accepted_at
+ * @property CarbonImmutable|null $arrived_at
+ * @property CarbonImmutable|null $started_at
+ * @property CarbonImmutable|null $completed_at
+ * @property CarbonImmutable|null $cancelled_at
+ *
+ * Legacy, pre-unification columns -- nullable, no longer in $fillable/casts() since nothing
+ * writes them anymore, but still physically present (kept until production's backfill is
+ * confirmed complete and a later migration drops them for real). BackfillTripPassengerModel
+ * is the one remaining legitimate reader.
+ * @property int|null $customer_id
+ * @property Point|null $pickup_location
+ * @property string|null $pickup_address
+ * @property Point|null $dropoff_location
+ * @property string|null $dropoff_address
+ * @property float|null $distance_km
+ * @property int|null $duration_minutes
+ * @property float|null $estimated_fare
+ * @property float|null $final_fare
+ * @property string|null $currency_code
+ * @property string|null $payment_method
+ * @property string|null $payment_status
+ */
 class Trip extends BaseModel
 {
+    /** @use HasFactory<TripFactory> */
+    use HasFactory;
+
     protected $fillable = [
         'trip_number',
-        'customer_id',
         'rider_id',
         'vehicle_id',
         'vehicle_type_id',
         'zone_id',
         'type',
         'status',
-        'pickup_location',
-        'pickup_address',
-        'dropoff_location',
-        'dropoff_address',
+        'available_seats',
+        'passenger_count',
+        'available_cargo_weight_kg',
+        'route_polyline',
+        'route_distance_km',
+        'route_duration_minutes',
         'requested_at',
         'accepted_at',
         'arrived_at',
@@ -31,42 +63,43 @@ class Trip extends BaseModel
         'cancelled_at',
         'cancelled_by',
         'cancellation_reason_id',
-        'distance_km',
-        'duration_minutes',
-        'estimated_fare',
-        'final_fare',
-        'currency_code',
-        'promo_code_id',
-        'discount_amount',
-        'payment_method',
-        'payment_status',
     ];
 
     protected function casts(): array
     {
         return [
-            'pickup_location' => Point::class,
-            'dropoff_location' => Point::class,
             'requested_at' => 'datetime',
             'accepted_at' => 'datetime',
             'arrived_at' => 'datetime',
             'started_at' => 'datetime',
             'completed_at' => 'datetime',
             'cancelled_at' => 'datetime',
-            'distance_km' => 'decimal:2',
-            'duration_minutes' => 'integer',
-            'estimated_fare' => 'decimal:2',
-            'final_fare' => 'decimal:2',
-            'discount_amount' => 'decimal:2',
+            'available_seats' => 'integer',
+            'passenger_count' => 'integer',
+            'available_cargo_weight_kg' => 'decimal:2',
+            'route_distance_km' => 'decimal:2',
+            'route_duration_minutes' => 'integer',
         ];
     }
 
     /**
-     * @return BelongsTo<User, $this>
+     * The customer on this trip's earliest (first-joined) passenger/delivery -- for a solo
+     * ride/delivery, its only one. Trips no longer carry a customer_id of their own; this is
+     * the closest equivalent, matching what trips.customer_id always pointed at before the
+     * trip_passengers/delivery_details unification. Relies on 'passengers.customer' or
+     * 'deliveries.sender' being eager-loaded when available to avoid an N+1 query.
      */
-    public function customer(): BelongsTo
+    public function primaryCustomer(): ?User
     {
-        return $this->belongsTo(User::class, 'customer_id');
+        if (in_array($this->type, ['ride', 'ride_share'], true)) {
+            $passenger = $this->relationLoaded('passengers') ? $this->passengers->first() : $this->passengers()->first();
+
+            return $passenger?->customer;
+        }
+
+        $delivery = $this->relationLoaded('deliveries') ? $this->deliveries->first() : $this->deliveries()->first();
+
+        return $delivery?->sender;
     }
 
     /**
@@ -118,19 +151,29 @@ class Trip extends BaseModel
     }
 
     /**
-     * @return BelongsTo<PromoCode, $this>
-     */
-    public function promoCode(): BelongsTo
-    {
-        return $this->belongsTo(PromoCode::class);
-    }
-
-    /**
      * @return HasMany<TripStop, $this>
      */
     public function stops(): HasMany
     {
         return $this->hasMany(TripStop::class)->orderBy('sequence');
+    }
+
+    /**
+     * @return HasMany<DeliveryStop, $this>
+     */
+    public function deliveryStops(): HasMany
+    {
+        return $this->hasMany(DeliveryStop::class)->orderBy('sequence');
+    }
+
+    /**
+     * Ride-share only: the individual passengers matched to this vehicle's shared journey.
+     *
+     * @return HasMany<TripPassenger, $this>
+     */
+    public function passengers(): HasMany
+    {
+        return $this->hasMany(TripPassenger::class)->orderBy('requested_at');
     }
 
     /**
@@ -142,19 +185,26 @@ class Trip extends BaseModel
     }
 
     /**
-     * @return HasOne<TripFareBreakdown, $this>
+     * One row per passenger now (via TripFareBreakdown.passenger_id) -- a ride_share trip can
+     * have several, so this is no longer a single relation. Use TripPassenger::fareBreakdown()
+     * for one specific passenger's own record.
+     *
+     * @return HasMany<TripFareBreakdown, $this>
      */
-    public function fareBreakdown(): HasOne
+    public function fareBreakdowns(): HasMany
     {
-        return $this->hasOne(TripFareBreakdown::class);
+        return $this->hasMany(TripFareBreakdown::class);
     }
 
     /**
-     * @return HasOne<DeliveryDetails, $this>
+     * The individual deliveries pooled onto this vehicle's shared journey -- exactly one
+     * for a plain 'delivery' trip, possibly several for 'delivery_share'.
+     *
+     * @return HasMany<DeliveryDetails, $this>
      */
-    public function deliveryDetails(): HasOne
+    public function deliveries(): HasMany
     {
-        return $this->hasOne(DeliveryDetails::class);
+        return $this->hasMany(DeliveryDetails::class)->orderBy('requested_at');
     }
 
     /**

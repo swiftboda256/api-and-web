@@ -2,10 +2,15 @@
 
 namespace App\Models;
 
+use Database\Factories\PricingRuleFactory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class PricingRule extends BaseModel
 {
+    /** @use HasFactory<PricingRuleFactory> */
+    use HasFactory;
+
     protected $fillable = [
         'zone_id',
         'vehicle_type_id',

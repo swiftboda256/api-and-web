@@ -82,20 +82,35 @@
                 </thead>
                 <tbody class="divide-y divide-gray-100 dark:divide-white/10">
                     @foreach ($trips as $trip)
+                        @php
+                            $tripCustomer = $trip->primaryCustomer();
+                            $tripIsDelivery = in_array($trip->type, ['delivery', 'delivery_share'], true);
+                            $tripItems = $tripIsDelivery ? $trip->deliveries : $trip->passengers;
+                            // Ride/ride_share's fare data lives on each passenger's fare
+                            // breakdown now; delivery keeps it on the delivery record directly.
+                            $tripFinalFares = $tripIsDelivery
+                                ? $tripItems->pluck('final_fare')
+                                : $tripItems->map(fn ($item) => $item->fareBreakdown?->final_fare);
+                            $tripEstimatedFares = $tripIsDelivery
+                                ? $tripItems->pluck('estimated_fare')
+                                : $tripItems->map(fn ($item) => $item->fareBreakdown?->estimated_fare);
+                            $tripFinalFare = $tripFinalFares->every(fn ($fare) => $fare !== null) ? $tripFinalFares->sum() : null;
+                            $tripEstimatedFare = $tripEstimatedFares->sum();
+                        @endphp
                         <tr wire:key="trip-{{ $trip->id }}">
                             <td class="py-2 pr-4 font-mono text-xs text-gray-600 dark:text-gray-400">{{ $trip->trip_number }}</td>
                             <td class="py-2 pr-4 text-gray-950 dark:text-white">
-                                {{ $trip->customer && $trip->customer->name !== '' ? $trip->customer->name : '—' }}
+                                {{ $tripCustomer && $tripCustomer->name !== '' ? $tripCustomer->name : '—' }}
                             </td>
                             <td class="py-2 pr-4 text-gray-700 dark:text-gray-300">
-                                {{ $trip->customer?->phone ?? '—' }}
+                                {{ $tripCustomer?->phone ?? '—' }}
                             </td>
                             <td class="py-2 pr-4 text-gray-700 dark:text-gray-300">{{ str($trip->type)->headline() }}</td>
                             <td class="py-2 pr-4">
                                 @include('filament.pages.riders.partials.status-badge', ['status' => $trip->status])
                             </td>
                             <td class="py-2 pr-4 text-gray-700 dark:text-gray-300">
-                                {{ $trip->final_fare !== null ? number_format((float) $trip->final_fare, 0) : ($trip->estimated_fare !== null ? number_format((float) $trip->estimated_fare, 0) . ' (est.)' : '—') }}
+                                {{ $tripFinalFare !== null ? number_format((float) $tripFinalFare, 0) : ($tripEstimatedFare > 0 ? number_format((float) $tripEstimatedFare, 0) . ' (est.)' : '—') }}
                             </td>
                             <td class="py-2 pr-4 text-gray-500 dark:text-gray-400">{{ $trip->requested_at?->format('d M Y H:i') ?? '—' }}</td>
                         </tr>

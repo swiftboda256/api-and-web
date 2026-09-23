@@ -3,7 +3,9 @@
 namespace App\Services\Auth;
 
 use App\Jobs\ProcessAccountDeletionJob;
+use App\Models\DeliveryDetails;
 use App\Models\Trip;
+use App\Models\TripPassenger;
 use App\Models\User;
 use App\Models\UserDeleteRequest;
 use App\Notifications\AccountDeletionRequestedNotification;
@@ -41,7 +43,7 @@ class UserAccountService
         });
 
         if (filled($user->email)) {
-            $user->notify(new AccountDeletionRequestedNotification());
+            $user->notify(new AccountDeletionRequestedNotification);
         }
 
         ProcessAccountDeletionJob::dispatch($deleteRequest->id);
@@ -60,15 +62,26 @@ class UserAccountService
             ->all();
 
         $activeStatuses = ['requested', 'searching', 'accepted', 'arrived', 'in_progress'];
+        $activePassengerStatuses = ['requested', 'matched', 'arrived_pickup', 'picked_up', 'arrived_dropoff'];
 
-        $userIdsWithActiveTrips = Trip::query()
-            ->where(function ($query) use ($userIds): void {
-                $query->whereIn('customer_id', $userIds)
-                    ->orWhereIn('rider_id', $userIds);
-            })
+        $userIdsWithActiveTripsAsRider = Trip::query()
+            ->whereIn('rider_id', $userIds)
             ->whereIn('status', $activeStatuses)
-            ->get(['customer_id', 'rider_id'])
-            ->flatMap(fn (Trip $trip): array => [$trip->customer_id, $trip->rider_id])
+            ->pluck('rider_id');
+
+        $userIdsWithActiveTripsAsCustomer = TripPassenger::query()
+            ->whereIn('customer_id', $userIds)
+            ->whereIn('status', $activePassengerStatuses)
+            ->pluck('customer_id')
+            ->merge(
+                DeliveryDetails::query()
+                    ->whereIn('sender_id', $userIds)
+                    ->whereIn('status', $activePassengerStatuses)
+                    ->pluck('sender_id')
+            );
+
+        $userIdsWithActiveTrips = $userIdsWithActiveTripsAsRider
+            ->merge($userIdsWithActiveTripsAsCustomer)
             ->filter()
             ->unique()
             ->all();
@@ -125,20 +138,30 @@ class UserAccountService
 
     public function ensureNoActiveTrip(User $user): void
     {
-        $activeStatuses = ['requested', 'searching', 'accepted', 'arrived', 'in_progress'];
-
-        $hasActiveTrip = Trip::query()
-            ->where(function ($query) use ($user): void {
-                $query->where('customer_id', $user->id)
-                    ->orWhere('rider_id', $user->id);
-            })
-            ->whereIn('status', $activeStatuses)
-            ->exists();
-
-        if ($hasActiveTrip) {
+        if ($this->hasActiveTripAsCustomer($user->id) || $this->hasActiveTripAsRider($user->id)) {
             throw ValidationException::withMessages([
                 'account' => 'You have an active trip. Please complete or cancel it before deleting your account.',
             ]);
         }
+    }
+
+    /**
+     * A customer's own active segment -- trips carry no customer_id of their own since the
+     * trip_passengers/delivery_details unification, so this checks their individual
+     * passenger/delivery rows instead of the vehicle trip as a whole.
+     */
+    private function hasActiveTripAsCustomer(int $userId): bool
+    {
+        $activePassengerStatuses = ['requested', 'matched', 'arrived_pickup', 'picked_up', 'arrived_dropoff'];
+
+        return TripPassenger::query()->where('customer_id', $userId)->whereIn('status', $activePassengerStatuses)->exists()
+            || DeliveryDetails::query()->where('sender_id', $userId)->whereIn('status', $activePassengerStatuses)->exists();
+    }
+
+    private function hasActiveTripAsRider(int $userId): bool
+    {
+        $activeStatuses = ['requested', 'searching', 'accepted', 'arrived', 'in_progress'];
+
+        return Trip::query()->where('rider_id', $userId)->whereIn('status', $activeStatuses)->exists();
     }
 }

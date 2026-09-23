@@ -3,10 +3,11 @@
 namespace App\Services\Checkout;
 
 use App\Models\Configuration;
+use App\Models\DeliveryDetails;
 use App\Models\PricingRule;
 use App\Models\PromoCode;
 use App\Models\SurgePricingSchedule;
-use App\Models\Trip;
+use App\Models\TripPassenger;
 use App\Models\User;
 use App\Models\Zone;
 use Carbon\CarbonInterface;
@@ -92,6 +93,131 @@ readonly class CheckoutService
     }
 
     /**
+     * Fare for a single passenger's own pickup -> dropoff segment on a ride-share trip:
+     * the same base+distance+time+surge fare as a solo ride over that segment, discounted
+     * by the configured ride_share_discount_percentage, floored at the pricing rule's
+     * minimum fare. Ride-share fares do not stack with promo codes.
+     *
+     * @return array{base_fare: float, distance_fare: float, time_fare: float, surge_multiplier: float, surge_amount: float, discount_percentage: float, fare: float}
+     */
+    public function calculateRideShareFare(
+        PricingRule $pricingRule,
+        Zone $zone,
+        int $vehicleTypeId,
+        float $distanceKm,
+        int $durationMinutes,
+        CarbonInterface $at,
+    ): array {
+        $soloFare = $this->calculateFare($pricingRule, $zone, $vehicleTypeId, $distanceKm, $durationMinutes, $at);
+
+        $discountPercentage = (float) Configuration::get('ride_share_discount_percentage', 0);
+        $discountedFare = max(
+            $soloFare['fare'] * (1 - $discountPercentage / 100),
+            (float) $pricingRule->minimum_fare,
+        );
+
+        return [
+            ...$soloFare,
+            'discount_percentage' => $discountPercentage,
+            'fare' => round($discountedFare, 2),
+        ];
+    }
+
+    /**
+     * Fare for a single delivery's own pickup -> dropoff segment on a pooled delivery trip:
+     * the same base+distance+time+surge fare as a standalone delivery over that segment,
+     * discounted by the configured delivery_share_discount_percentage, floored at the
+     * pricing rule's minimum fare. Pooled-delivery fares do not stack with promo codes.
+     *
+     * @return array{base_fare: float, distance_fare: float, time_fare: float, surge_multiplier: float, surge_amount: float, discount_percentage: float, fare: float}
+     */
+    public function calculateDeliveryShareFare(
+        PricingRule $pricingRule,
+        Zone $zone,
+        int $vehicleTypeId,
+        float $distanceKm,
+        int $durationMinutes,
+        CarbonInterface $at,
+    ): array {
+        $soloFare = $this->calculateFare($pricingRule, $zone, $vehicleTypeId, $distanceKm, $durationMinutes, $at);
+
+        $discountPercentage = (float) Configuration::get('delivery_share_discount_percentage', 0);
+        $discountedFare = max(
+            $soloFare['fare'] * (1 - $discountPercentage / 100),
+            (float) $pricingRule->minimum_fare,
+        );
+
+        return [
+            ...$soloFare,
+            'discount_percentage' => $discountPercentage,
+            'fare' => round($discountedFare, 2),
+        ];
+    }
+
+    /**
+     * Recalculates a passenger's or delivery's final fare at drop-off -- branches on the
+     * parent trip's type since 'ride_share'/'delivery_share' apply their own discount
+     * percentage while solo 'ride'/'delivery' don't; none of the four re-apply a promo code
+     * discount here, matching recalculateFare()'s existing behavior of recomputing the raw
+     * fare rather than reapplying promos.
+     *
+     * Returns the full breakdown (not just the final figure) so the caller can record it for
+     * reference -- 'fare' is the rounded final fare, 'fare_before_rounding' is what it was
+     * before roundFare() ran.
+     *
+     * @return array{base_fare: float, distance_fare: float, time_fare: float, surge_multiplier: float, surge_amount: float, fare_before_rounding: float, fare: float}
+     */
+    public function recalculatePassengerFare(TripPassenger|DeliveryDetails $settleable): array
+    {
+        $trip = $settleable->trip;
+
+        if (! $trip->zone_id || ! $trip->zone) {
+            return $this->unresolvedFareBreakdown($settleable);
+        }
+
+        $pricingRule = $this->findPricingRule($trip->zone_id, (int) $trip->vehicle_type_id);
+
+        if (! $pricingRule) {
+            return $this->unresolvedFareBreakdown($settleable);
+        }
+
+        $fare = match ($trip->type) {
+            'ride_share' => $this->calculateRideShareFare($pricingRule, $trip->zone, (int) $trip->vehicle_type_id, (float) $settleable->distance_km, (int) $settleable->duration_minutes, now()),
+            'delivery_share' => $this->calculateDeliveryShareFare($pricingRule, $trip->zone, (int) $trip->vehicle_type_id, (float) $settleable->distance_km, (int) $settleable->duration_minutes, now()),
+            default => $this->calculateFare($pricingRule, $trip->zone, (int) $trip->vehicle_type_id, (float) $settleable->distance_km, (int) $settleable->duration_minutes, now()),
+        };
+
+        return [
+            ...$fare,
+            'fare_before_rounding' => $fare['fare'],
+            'fare' => $this->roundFare($fare['fare']),
+        ];
+    }
+
+    /**
+     * Fallback for recalculatePassengerFare() when the trip's zone/pricing rule can no
+     * longer be resolved -- falls back to the fare already recorded at booking, with no
+     * breakdown to recompute.
+     *
+     * @return array{base_fare: float, distance_fare: float, time_fare: float, surge_multiplier: float, surge_amount: float, fare_before_rounding: float, fare: float}
+     */
+    private function unresolvedFareBreakdown(TripPassenger|DeliveryDetails $settleable): array
+    {
+        $fare = (float) ($settleable instanceof DeliveryDetails ? $settleable->estimated_fare : $settleable->fareBreakdown?->estimated_fare);
+        $baseFare = (float) ($settleable instanceof DeliveryDetails ? $settleable->base_fare_amount : $settleable->fareBreakdown?->base_fare);
+
+        return [
+            'base_fare' => $baseFare,
+            'distance_fare' => 0.0,
+            'time_fare' => 0.0,
+            'surge_multiplier' => 1.0,
+            'surge_amount' => 0.0,
+            'fare_before_rounding' => $fare,
+            'fare' => $this->roundFare($fare),
+        ];
+    }
+
+    /**
      * Validates a promo code independent of any specific trip (activity window and usage limits only).
      */
     public function resolvePromoCode(string $code, User $user): PromoCode
@@ -163,30 +289,6 @@ readonly class CheckoutService
         }
 
         return floor($fare / 500) * 500;
-    }
-
-    public function recalculateFare(Trip $trip): float
-    {
-        if (! $trip->zone_id || ! $trip->zone) {
-            return $this->roundFare((float) $trip->estimated_fare);
-        }
-
-        $pricingRule = $this->findPricingRule($trip->zone_id, (int) $trip->vehicle_type_id);
-
-        if (! $pricingRule) {
-            return $this->roundFare((float) $trip->estimated_fare);
-        }
-
-        $fare = $this->calculateFare(
-            $pricingRule,
-            $trip->zone,
-            (int) $trip->vehicle_type_id,
-            (float) $trip->distance_km,
-            (int) $trip->duration_minutes,
-            now(),
-        );
-
-        return $this->roundFare($fare['fare']);
     }
 
     private function findPricingRule(int $zoneId, int $vehicleTypeId, ?CarbonInterface $at = null): ?PricingRule

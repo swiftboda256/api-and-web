@@ -2,15 +2,21 @@
 
 namespace App\Models;
 
+use Database\Factories\VehicleTypeFactory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class VehicleType extends BaseModel
 {
+    /** @use HasFactory<VehicleTypeFactory> */
+    use HasFactory;
+
     protected $fillable = [
         'name',
         'code',
         'capacity',
+        'max_cargo_weight_kg',
         'icon_url',
         'is_active',
     ];
@@ -18,6 +24,7 @@ class VehicleType extends BaseModel
     protected function casts(): array
     {
         return [
+            'max_cargo_weight_kg' => 'decimal:2',
             'is_active' => 'boolean',
         ];
     }

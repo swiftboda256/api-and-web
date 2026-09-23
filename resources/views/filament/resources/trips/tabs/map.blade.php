@@ -1,6 +1,10 @@
 @php
-    $pickup = $trip->pickup_location;
-    $dropoff = $trip->dropoff_location;
+    $isDelivery = in_array($trip->type, ['delivery', 'delivery_share'], true);
+    $primaryItem = ($isDelivery ? $trip->deliveries : $trip->passengers)->first();
+    $primaryPickupStop = $primaryItem?->stops->firstWhere('stop_type', 'pickup');
+    $primaryDropoffStop = $primaryItem?->stops->firstWhere('stop_type', 'dropoff');
+    $pickup = $primaryPickupStop?->location;
+    $dropoff = $primaryDropoffStop?->location;
 @endphp
 
 <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -20,7 +24,7 @@
                 <span class="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500"></span>
                 <div>
                     <p class="text-xs font-medium text-gray-500 dark:text-gray-400">Pickup</p>
-                    <p class="text-sm text-gray-950 dark:text-white">{{ $trip->pickup_address ?? 'No address recorded' }}</p>
+                    <p class="text-sm text-gray-950 dark:text-white">{{ $primaryPickupStop?->address ?? 'No address recorded' }}</p>
                     @if ($pickup)
                         <p class="mt-1 font-mono text-xs text-gray-400 dark:text-gray-500">
                             {{ number_format($pickup->getLatitude(), 6) }}, {{ number_format($pickup->getLongitude(), 6) }}
@@ -35,7 +39,7 @@
                 <span class="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-rose-500"></span>
                 <div>
                     <p class="text-xs font-medium text-gray-500 dark:text-gray-400">Dropoff</p>
-                    <p class="text-sm text-gray-950 dark:text-white">{{ $trip->dropoff_address ?? 'No address recorded' }}</p>
+                    <p class="text-sm text-gray-950 dark:text-white">{{ $primaryDropoffStop?->address ?? 'No address recorded' }}</p>
                     @if ($dropoff)
                         <p class="mt-1 font-mono text-xs text-gray-400 dark:text-gray-500">
                             {{ number_format($dropoff->getLatitude(), 6) }}, {{ number_format($dropoff->getLongitude(), 6) }}
@@ -49,11 +53,11 @@
             <dl class="space-y-3 text-sm">
                 <div class="flex justify-between">
                     <dt class="text-gray-500 dark:text-gray-400">Distance</dt>
-                    <dd class="text-gray-950 dark:text-white">{{ number_format((float) $trip->distance_km, 1) }} km</dd>
+                    <dd class="text-gray-950 dark:text-white">{{ number_format((float) $primaryItem?->distance_km, 1) }} km</dd>
                 </div>
                 <div class="flex justify-between">
                     <dt class="text-gray-500 dark:text-gray-400">Duration</dt>
-                    <dd class="text-gray-950 dark:text-white">{{ $trip->duration_minutes }} min</dd>
+                    <dd class="text-gray-950 dark:text-white">{{ $primaryItem?->duration_minutes }} min</dd>
                 </div>
             </dl>
         </div>
