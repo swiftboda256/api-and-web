@@ -284,7 +284,9 @@ readonly class RiderTripService
 
         return DB::transaction(function () use ($trip, $riderProfile, $proofOfDeliveryPhotoUrl): Trip {
             $finalFare = $this->checkout->recalculateFare($trip);
-            $riderEarning = $trip->fareBreakdown !== null ? (float) $trip->fareBreakdown->rider_earning : $finalFare;
+            $riderEarning = $this->checkout->roundFare(
+                $trip->fareBreakdown !== null ? (float) $trip->fareBreakdown->rider_earning : $finalFare,
+            );
             $commissionAmount = round($finalFare - $riderEarning, 2);
 
             $trip->update([
