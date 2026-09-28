@@ -569,8 +569,10 @@ readonly class RiderTripService
         $fareBreakdown = $this->checkout->recalculatePassengerFare($settleable);
         $finalFare = $fareBreakdown['fare'];
         $pricingRule = $this->checkout->resolvePricingRule((int) $trip->zone_id, (int) $trip->vehicle_type_id);
-        $commissionAmount = round($finalFare * ((float) $pricingRule->commission_rate / 100), 2);
-        $riderEarning = round($finalFare - $commissionAmount, 2);
+        $riderEarning = $this->checkout->roundFare(
+            round($finalFare * (1 - (float) $pricingRule->commission_rate / 100), 2),
+        );
+        $commissionAmount = round($finalFare - $riderEarning, 2);
 
         // The record holding this settlement's fare/payment fields -- a ride passenger's own
         // TripFareBreakdown row, or the DeliveryDetails row itself (delivery hasn't moved
@@ -684,26 +686,6 @@ readonly class RiderTripService
             ]);
         }
 
-        $proofOfDeliveryPhotoUrl = $proofOfDeliveryPhoto
-            ? $this->storeProofOfDeliveryPhoto($trip, $proofOfDeliveryPhoto)
-            : null;
-
-        return DB::transaction(function () use ($trip, $riderProfile, $proofOfDeliveryPhotoUrl): Trip {
-            $finalFare = $this->checkout->recalculateFare($trip);
-            $riderEarning = $this->checkout->roundFare(
-                $trip->fareBreakdown !== null ? (float) $trip->fareBreakdown->rider_earning : $finalFare,
-            );
-            $commissionAmount = round($finalFare - $riderEarning, 2);
-
-            $trip->update([
-                'status' => 'completed',
-                'completed_at' => now(),
-                'final_fare' => $finalFare,
-            ]);
-
-            if ($proofOfDeliveryPhotoUrl !== null) {
-                $trip->deliveryDetails?->update(['proof_of_delivery_photo' => $proofOfDeliveryPhotoUrl]);
-            }
         $proofOfDeliveryPhotoUrl = $this->storeProofOfDeliveryPhoto($trip, $proofOfDeliveryPhoto);
 
         return DB::transaction(function () use ($trip, $delivery, $riderProfile, $proofOfDeliveryPhotoUrl): Trip {
