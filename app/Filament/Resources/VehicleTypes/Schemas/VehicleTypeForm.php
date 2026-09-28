@@ -20,16 +20,16 @@ class VehicleTypeForm
                     ->required()
                     ->numeric()
                     ->default(1),
+                TextInput::make('free_distance_km')
+                    ->label('Free distance (km)')
+                    ->required()
+                    ->numeric()
+                    ->minValue(0)
+                    ->default(0),
                 TextInput::make('icon_url')
                     ->url(),
                 Toggle::make('is_active')
                     ->required(),
-                TextInput::make('created_by')
-                    ->numeric(),
-                TextInput::make('updated_by')
-                    ->numeric(),
-                TextInput::make('deleted_by')
-                    ->numeric(),
             ]);
     }
 }

@@ -15,9 +15,9 @@ class VehicleTypeSeeder extends Seeder
         $systemUser = User::role('system')->firstOrFail();
 
         $vehicleTypes = [
-            ['name' => 'Motorcycle', 'code' => 'motorcycle', 'capacity' => 1],
-            ['name' => 'Car', 'code' => 'car', 'capacity' => 4],
-            ['name' => 'Car XL', 'code' => 'car_xl', 'capacity' => 7],
+            ['name' => 'Motorcycle', 'code' => 'motorcycle', 'capacity' => 1, 'free_distance_km' => 2],
+            ['name' => 'Car', 'code' => 'car', 'capacity' => 4, 'free_distance_km' => 4],
+            ['name' => 'Car XL', 'code' => 'car_xl', 'capacity' => 7, 'free_distance_km' => 0],
         ];
 
         $actingUser = Auth::user();
@@ -30,6 +30,7 @@ class VehicleTypeSeeder extends Seeder
                     [
                         'name' => $vehicleType['name'],
                         'capacity' => $vehicleType['capacity'],
+                        'free_distance_km' => $vehicleType['free_distance_km'],
                         'is_active' => true,
                     ],
                 );

@@ -5,7 +5,9 @@ namespace App\Filament\Resources\PricingRules\Schemas;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
+use Illuminate\Validation\Rules\Unique;
 
 class PricingRuleForm
 {
@@ -18,7 +20,14 @@ class PricingRuleForm
                     ->required(),
                 Select::make('vehicle_type_id')
                     ->relationship('vehicleType', 'name')
-                    ->required(),
+                    ->required()
+                    ->unique(
+                        ignoreRecord: true,
+                        modifyRuleUsing: fn (Unique $rule, Get $get) => $rule->where('zone_id', $get('zone_id')),
+                    )
+                    ->validationMessages([
+                        'unique' => 'A pricing rule already exists for this vehicle type in the selected zone.',
+                    ]),
                 TextInput::make('base_fare')
                     ->required()
                     ->numeric(),

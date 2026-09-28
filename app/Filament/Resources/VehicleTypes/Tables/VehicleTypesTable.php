@@ -8,7 +8,6 @@ use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ForceDeleteBulkAction;
 use Filament\Actions\RestoreBulkAction;
-use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
@@ -24,6 +23,10 @@ class VehicleTypesTable
                 TextColumn::make('code')
                     ->searchable(),
                 TextColumn::make('capacity')
+                    ->numeric()
+                    ->sortable(),
+                TextColumn::make('free_distance_km')
+                    ->label('Free distance (km)')
                     ->numeric()
                     ->sortable(),
                 TextColumn::make('icon_url')

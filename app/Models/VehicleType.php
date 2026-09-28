@@ -16,6 +16,7 @@ class VehicleType extends BaseModel
         'name',
         'code',
         'capacity',
+        'free_distance_km',
         'max_cargo_weight_kg',
         'icon_url',
         'is_active',
@@ -24,6 +25,7 @@ class VehicleType extends BaseModel
     protected function casts(): array
     {
         return [
+            'free_distance_km' => 'decimal:2',
             'max_cargo_weight_kg' => 'decimal:2',
             'is_active' => 'boolean',
         ];
