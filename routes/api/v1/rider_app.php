@@ -52,6 +52,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('{trip}/start', [RideController::class, 'start'])->name('start');
         Route::patch('{trip}/cancel', [RideController::class, 'cancel'])->name('cancel');
         Route::patch('{trip}/end', [RideController::class, 'end'])->name('end');
+        Route::patch('{trip}/settle-cash', [RideController::class, 'settleCash'])->name('settle-cash')->whereNumber('trip');
         Route::post('{trip}/location', [RideController::class, 'logLocation'])->name('log-location');
     });
 

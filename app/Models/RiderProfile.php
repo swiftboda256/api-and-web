@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Clickbar\Magellan\Data\Geometries\Point;
+use Illuminate\Database\Eloquent\Attributes\Scope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -68,6 +70,22 @@ class RiderProfile extends BaseModel
     public function homeZone(): BelongsTo
     {
         return $this->belongsTo(Zone::class, 'home_zone_id');
+    }
+
+    /**
+     * Riders whose wallet balance hasn't dropped below their home zone's
+     * minimum_negative_balance (from cash-trip commission deductions). A rider with no
+     * wallet counts as a 0 balance; a rider with no home zone gets a floor of 0.
+     *
+     * @param  Builder<RiderProfile>  $query
+     */
+    #[Scope]
+    protected function withinWalletLimit(Builder $query): void
+    {
+        $query->whereRaw(
+            'COALESCE((SELECT wallets.balance FROM wallets WHERE wallets.user_id = rider_profiles.user_id AND wallets.deleted_at IS NULL), 0)
+                >= COALESCE((SELECT zones.minimum_negative_balance FROM zones WHERE zones.id = rider_profiles.home_zone_id), 0)',
+        );
     }
 
     /**

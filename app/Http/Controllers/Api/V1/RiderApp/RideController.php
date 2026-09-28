@@ -82,6 +82,14 @@ class RideController extends Controller
         return self::success(new RideResource($riderTripService->end($user, $trip, $request->file('proof_of_delivery_photo'))));
     }
 
+    public function settleCash(Request $request, int $trip, RiderTripService $riderTripService): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        return self::success(new RideResource($riderTripService->settleCash($user, $trip)));
+    }
+
     public function logLocation(LogRideLocationRequest $request, int $trip, RiderTripService $riderTripService): JsonResponse
     {
         /** @var User $user */

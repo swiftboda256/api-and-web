@@ -275,6 +275,7 @@ readonly class TripService
         $riderProfiles = RiderProfile::query()
             ->where('availability_status', 'online')
             ->whereNotNull('current_location')
+            ->withinWalletLimit()
             ->whereHas('vehicle', fn ($query) => $query->where('vehicle_type_id', $vehicleTypeId)->where('status', 'approved'))
             ->where(ST::distanceSphere('current_location', $pickup), '<=', $radiusMeters)
             ->with('user.devices')

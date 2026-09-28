@@ -297,10 +297,10 @@ readonly class RiderTripService
                 $trip->deliveryDetails?->update(['proof_of_delivery_photo' => $proofOfDeliveryPhotoUrl]);
             }
 
+            // Cash trips stay payment_status 'pending' here -- they're settled once the rider
+            // acknowledges receiving the cash via settleCash().
             if ($trip->payment_method === 'wallet') {
                 $this->settleWalletPayment($trip, $riderProfile, $finalFare, $riderEarning, $commissionAmount);
-            } elseif ($trip->payment_method === 'cash') {
-                $this->settleCashPayment($trip, $riderProfile, $finalFare, $riderEarning, $commissionAmount);
             } elseif ($trip->payment_method === 'mobile_money') {
                 $this->settleMobileMoneyPayment($trip, $riderProfile, $finalFare, $riderEarning, $commissionAmount);
             }
@@ -398,6 +398,7 @@ readonly class RiderTripService
             ->where('availability_status', 'online')
             ->whereNotNull('current_location')
             ->where('user_id', '!=', $excludedUserId)
+            ->withinWalletLimit()
             ->whereHas('vehicle', fn ($query) => $query->where('vehicle_type_id', $vehicleTypeId)->where('status', 'approved'))
             ->where(ST::distanceSphere('current_location', $pickup), '<=', $radiusMeters)
             ->with('user.devices')
@@ -507,7 +508,92 @@ readonly class RiderTripService
         $trip->update(['payment_status' => 'paid']);
     }
 
-    private function settleCashPayment(Trip $trip, RiderProfile $riderProfile, float $finalFare, float $riderEarning, float $commissionAmount): void
+    /**
+     * Rider acknowledges receiving the cash for a completed cash trip. The rider keeps the
+     * whole fare in hand, so the platform's commission is deducted from their wallet --
+     * which may go negative, but not below the trip zone's minimum_negative_balance.
+     */
+    public function settleCash(User $user, int $tripId): Trip
+    {
+        $riderProfile = $this->riderProfile($user);
+        $trip = $this->ownRide($user, $tripId)->load(['fareBreakdown', 'zone']);
+
+        if ($trip->payment_method !== 'cash') {
+            throw ValidationException::withMessages([
+                'payment_method' => 'Only cash trips can be settled this way.',
+            ]);
+        }
+
+        if ($trip->status !== 'completed') {
+            throw ValidationException::withMessages([
+                'status' => 'Only completed trips can be settled.',
+            ]);
+        }
+
+        if ($trip->payment_status === 'paid') {
+            throw ValidationException::withMessages([
+                'payment_status' => 'This trip has already been settled.',
+            ]);
+        }
+
+        return DB::transaction(function () use ($trip, $riderProfile): Trip {
+            $finalFare = (float) $trip->final_fare;
+            $riderEarning = $trip->fareBreakdown !== null ? (float) $trip->fareBreakdown->rider_earning : $finalFare;
+            $commissionAmount = round($finalFare - $riderEarning, 2);
+
+            $riderWallet = Wallet::query()
+                ->where('user_id', $riderProfile->user_id)
+                ->where('status', 'active')
+                ->lockForUpdate()
+                ->first();
+
+            if (! $riderWallet) {
+                throw ValidationException::withMessages([
+                    'wallet' => 'You need an active wallet before you can settle a cash trip.',
+                ]);
+            }
+
+            $balanceBefore = (float) $riderWallet->balance;
+            $balanceAfter = round($balanceBefore - max($commissionAmount, 0), 2);
+            $minimumBalance = (float) ($trip->zone->minimum_negative_balance ?? 0);
+
+            if ($commissionAmount > 0 && $balanceAfter < $minimumBalance) {
+                throw ValidationException::withMessages([
+                    'wallet' => 'Your wallet balance is too low to cover the commission on this trip. Please top up your wallet.',
+                ]);
+            }
+
+            $this->recordCashPayment($trip, $riderProfile, $finalFare, $riderEarning);
+
+            if ($commissionAmount > 0) {
+                $riderWallet->update(['balance' => $balanceAfter]);
+
+                Transaction::query()->create([
+                    'user_id' => $riderProfile->user_id,
+                    'wallet_id' => $riderWallet->id,
+                    'method' => 'wallet',
+                    'direction' => 'debit',
+                    'transaction_type' => 'commission',
+                    'amount' => $commissionAmount,
+                    'currency_code' => $trip->currency_code,
+                    'balance_before' => $balanceBefore,
+                    'balance_after' => $balanceAfter,
+                    'narration' => "Commission for cash trip {$trip->trip_number}",
+                    'reference_type' => Trip::class,
+                    'reference_id' => $trip->id,
+                    'status' => 'completed',
+                ]);
+            }
+
+            $this->transactionService->recordCommissionTransaction($trip, 'cash', $commissionAmount);
+
+            $trip->update(['payment_status' => 'paid']);
+
+            return $trip->fresh()->load(['vehicleType', 'fareBreakdown', 'deliveryDetails', 'customer']);
+        });
+    }
+
+    private function recordCashPayment(Trip $trip, RiderProfile $riderProfile, float $finalFare, float $riderEarning): void
     {
         Transaction::query()->create([
             'user_id' => $trip->customer_id,
@@ -536,10 +622,6 @@ readonly class RiderTripService
             'reference_id' => $trip->id,
             'status' => 'completed',
         ]);
-
-        $this->transactionService->recordCommissionTransaction($trip, 'cash', $commissionAmount);
-
-        $trip->update(['payment_status' => 'paid']);
     }
 
     private function settleMobileMoneyPayment(Trip $trip, RiderProfile $riderProfile, float $finalFare, float $riderEarning, float $commissionAmount): void

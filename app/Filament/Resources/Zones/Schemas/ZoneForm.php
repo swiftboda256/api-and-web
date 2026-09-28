@@ -27,6 +27,13 @@ class ZoneForm
                     ->required(),
                 TextInput::make('timezone')
                     ->required(),
+                TextInput::make('minimum_negative_balance')
+                    ->label('Minimum rider wallet balance')
+                    ->helperText('Lowest a rider\'s wallet may go when cash-trip commission is deducted, e.g. -20000. Use 0 to disallow a negative balance.')
+                    ->required()
+                    ->numeric()
+                    ->maxValue(0)
+                    ->default(0),
                 Toggle::make('is_active')
                     ->required(),
             ]);
