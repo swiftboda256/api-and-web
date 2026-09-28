@@ -19,6 +19,7 @@ class TripsTable
     public static function configure(Table $table): Table
     {
         return $table
+            ->defaultSort('created_at', 'desc')
             ->columns([
                 TextColumn::make('trip_number')
                     ->searchable(),
@@ -39,20 +40,12 @@ class TripsTable
                     ->dateTime()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('creator.name')
-                    ->numeric()
-                    ->sortable(),
+                TextColumn::make('creator.name'),
                 TextColumn::make('updater.name')
-                    ->numeric()
-                    ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('deleted_by')
-                    ->numeric()
-                    ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('deleter.name')
-                    ->dateTime()
-                    ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
