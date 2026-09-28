@@ -684,6 +684,26 @@ readonly class RiderTripService
             ]);
         }
 
+        $proofOfDeliveryPhotoUrl = $proofOfDeliveryPhoto
+            ? $this->storeProofOfDeliveryPhoto($trip, $proofOfDeliveryPhoto)
+            : null;
+
+        return DB::transaction(function () use ($trip, $riderProfile, $proofOfDeliveryPhotoUrl): Trip {
+            $finalFare = $this->checkout->recalculateFare($trip);
+            $riderEarning = $this->checkout->roundFare(
+                $trip->fareBreakdown !== null ? (float) $trip->fareBreakdown->rider_earning : $finalFare,
+            );
+            $commissionAmount = round($finalFare - $riderEarning, 2);
+
+            $trip->update([
+                'status' => 'completed',
+                'completed_at' => now(),
+                'final_fare' => $finalFare,
+            ]);
+
+            if ($proofOfDeliveryPhotoUrl !== null) {
+                $trip->deliveryDetails?->update(['proof_of_delivery_photo' => $proofOfDeliveryPhotoUrl]);
+            }
         $proofOfDeliveryPhotoUrl = $this->storeProofOfDeliveryPhoto($trip, $proofOfDeliveryPhoto);
 
         return DB::transaction(function () use ($trip, $delivery, $riderProfile, $proofOfDeliveryPhotoUrl): Trip {
