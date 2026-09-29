@@ -115,9 +115,17 @@ class BackfillTripPassengerModel extends Command
 
     private function backfillRideTrip(Trip $trip, CheckoutService $checkout): void
     {
-        $fareComponents = $this->legacyFareComponents($trip, $checkout);
+        // Pre-unification bookings already created a per-trip breakdown row holding the
+        // real recorded components (base/distance/time/surge/commission/rider earning) --
+        // attach that to the new passenger rather than recomputing an approximation.
+        $existingBreakdown = TripFareBreakdown::query()
+            ->where('trip_id', $trip->id)
+            ->whereNull('passenger_id')
+            ->first();
 
-        DB::transaction(function () use ($trip, $fareComponents): void {
+        $fareComponents = $existingBreakdown === null ? $this->legacyFareComponents($trip, $checkout) : null;
+
+        DB::transaction(function () use ($trip, $existingBreakdown, $fareComponents): void {
             $passenger = TripPassenger::query()->create([
                 'trip_id' => $trip->id,
                 'customer_id' => $trip->customer_id,
@@ -134,19 +142,27 @@ class BackfillTripPassengerModel extends Command
                 'cancellation_reason_id' => $trip->cancellation_reason_id,
             ]);
 
-            TripFareBreakdown::query()->create([
-                'trip_id' => $trip->id,
+            $fareData = [
                 'passenger_id' => $passenger->id,
                 'customer_id' => $trip->customer_id,
-                'base_fare' => $fareComponents['base_fare'] ?? null,
-                'distance_fare' => $fareComponents['distance_fare'] ?? null,
-                'time_fare' => $fareComponents['time_fare'] ?? null,
                 'estimated_fare' => $trip->estimated_fare,
                 'final_fare' => $trip->final_fare,
                 'currency_code' => $trip->currency_code,
                 'payment_method' => $trip->payment_method,
                 'payment_status' => $trip->payment_status,
-            ]);
+            ];
+
+            if ($existingBreakdown !== null) {
+                $existingBreakdown->update($fareData);
+            } else {
+                // If no pricing rule resolves, the components are left out entirely rather
+                // than sent as null, so distance_fare/time_fare keep their column defaults.
+                TripFareBreakdown::query()->create([
+                    'trip_id' => $trip->id,
+                    ...$fareData,
+                    ...($fareComponents ?? []),
+                ]);
+            }
 
             TripStop::query()->create([
                 'trip_id' => $trip->id,
@@ -223,12 +239,11 @@ class BackfillTripPassengerModel extends Command
     }
 
     /**
-     * Legacy trips never recorded their fare components separately, so they're recomputed
-     * from the trip's zone pricing rule as it stood at requested_at (the rule's own
-     * effective_from/effective_to window, not surge). Surge is deliberately left out --
-     * no surge schedule is applied here, unlike calculateFare(). Null (components left
-     * empty) when the zone/vehicle type/distance or an effective pricing rule can't be
-     * resolved, rather than aborting the whole backfill.
+     * Fallback for a legacy trip with no recorded breakdown row: recompute its components
+     * from the zone's current pricing rule. Surge is deliberately left out -- no surge
+     * schedule is applied here, unlike calculateFare(). Null when the zone/vehicle
+     * type/distance or a pricing rule can't be resolved, rather than aborting the whole
+     * backfill.
      *
      * @return array{base_fare: float, distance_fare: float, time_fare: float}|null
      */
@@ -241,7 +256,7 @@ class BackfillTripPassengerModel extends Command
         }
 
         try {
-            $pricingRule = $checkout->resolvePricingRule($zone->id, (int) $trip->vehicle_type_id, $trip->requested_at);
+            $pricingRule = $checkout->resolvePricingRule($zone->id, (int) $trip->vehicle_type_id);
         } catch (ValidationException) {
             return null;
         }
