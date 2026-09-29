@@ -35,9 +35,9 @@ readonly class CheckoutService
         return $zone;
     }
 
-    public function resolvePricingRule(int $zoneId, int $vehicleTypeId): PricingRule
+    public function resolvePricingRule(int $zoneId, int $vehicleTypeId, ?CarbonInterface $at = null): PricingRule
     {
-        $pricingRule = $this->findPricingRule($zoneId, $vehicleTypeId);
+        $pricingRule = $this->findPricingRule($zoneId, $vehicleTypeId, $at);
 
         if (! $pricingRule) {
             throw ValidationException::withMessages([

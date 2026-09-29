@@ -7,11 +7,13 @@ use App\Models\Trip;
 use App\Models\TripFareBreakdown;
 use App\Models\TripPassenger;
 use App\Models\TripStop;
+use App\Services\Checkout\CheckoutService;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Backfills existing "legacy" trips onto the trip_passengers/delivery_details
@@ -43,7 +45,7 @@ class BackfillTripPassengerModel extends Command
         'cancelled' => 'cancelled',
     ];
 
-    public function handle(): int
+    public function handle(CheckoutService $checkout): int
     {
         $dryRun = (bool) $this->option('dry-run');
 
@@ -54,10 +56,11 @@ class BackfillTripPassengerModel extends Command
         Trip::query()
             ->where('type', 'ride')
             ->whereDoesntHave('passengers')
-            ->chunkById(100, function ($trips) use ($dryRun, &$rideBackfilled): void {
+            ->with('zone')
+            ->chunkById(100, function ($trips) use ($dryRun, $checkout, &$rideBackfilled): void {
                 foreach ($trips as $trip) {
                     if (! $dryRun) {
-                        $this->backfillRideTrip($trip);
+                        $this->backfillRideTrip($trip, $checkout);
                     }
 
                     $rideBackfilled++;
@@ -110,9 +113,11 @@ class BackfillTripPassengerModel extends Command
         return self::SUCCESS;
     }
 
-    private function backfillRideTrip(Trip $trip): void
+    private function backfillRideTrip(Trip $trip, CheckoutService $checkout): void
     {
-        DB::transaction(function () use ($trip): void {
+        $fareComponents = $this->legacyFareComponents($trip, $checkout);
+
+        DB::transaction(function () use ($trip, $fareComponents): void {
             $passenger = TripPassenger::query()->create([
                 'trip_id' => $trip->id,
                 'customer_id' => $trip->customer_id,
@@ -129,12 +134,13 @@ class BackfillTripPassengerModel extends Command
                 'cancellation_reason_id' => $trip->cancellation_reason_id,
             ]);
 
-            // Pre-breakdown trips never tracked base_fare/distance_fare/time_fare/surge/
-            // commission separately -- only what the legacy trips-level columns held.
             TripFareBreakdown::query()->create([
                 'trip_id' => $trip->id,
                 'passenger_id' => $passenger->id,
                 'customer_id' => $trip->customer_id,
+                'base_fare' => $fareComponents['base_fare'] ?? null,
+                'distance_fare' => $fareComponents['distance_fare'] ?? null,
+                'time_fare' => $fareComponents['time_fare'] ?? null,
                 'estimated_fare' => $trip->estimated_fare,
                 'final_fare' => $trip->final_fare,
                 'currency_code' => $trip->currency_code,
@@ -214,6 +220,41 @@ class BackfillTripPassengerModel extends Command
                 'arrived_at' => $this->dropoffArrivedAt($trip),
             ]);
         });
+    }
+
+    /**
+     * Legacy trips never recorded their fare components separately, so they're recomputed
+     * from the trip's zone pricing rule as it stood at requested_at (the rule's own
+     * effective_from/effective_to window, not surge). Surge is deliberately left out --
+     * no surge schedule is applied here, unlike calculateFare(). Null (components left
+     * empty) when the zone/vehicle type/distance or an effective pricing rule can't be
+     * resolved, rather than aborting the whole backfill.
+     *
+     * @return array{base_fare: float, distance_fare: float, time_fare: float}|null
+     */
+    private function legacyFareComponents(Trip $trip, CheckoutService $checkout): ?array
+    {
+        $zone = $trip->zone;
+
+        if ($zone === null || $trip->vehicle_type_id === null || $trip->distance_km === null) {
+            return null;
+        }
+
+        try {
+            $pricingRule = $checkout->resolvePricingRule($zone->id, (int) $trip->vehicle_type_id, $trip->requested_at);
+        } catch (ValidationException) {
+            return null;
+        }
+
+        $distanceKm = (float) $trip->distance_km;
+        $durationMinutes = $trip->duration_minutes ?? $checkout->durationMinutes($distanceKm);
+        $chargeableDistanceKm = max(0.0, $distanceKm - (float) $pricingRule->vehicleType->free_distance_km);
+
+        return [
+            'base_fare' => (float) $pricingRule->base_fare,
+            'distance_fare' => round((float) $pricingRule->per_km_rate * $chargeableDistanceKm, 2),
+            'time_fare' => round((float) $pricingRule->per_minute_rate * $durationMinutes, 2),
+        ];
     }
 
     private function pickupArrivedAt(Trip $trip): ?CarbonImmutable
