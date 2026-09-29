@@ -153,7 +153,17 @@ class BackfillTripPassengerModel extends Command
             ];
 
             if ($existingBreakdown !== null) {
-                $existingBreakdown->update($fareData);
+                $existingBreakdown->update([
+                    ...$fareData,
+                    'final_fare_before_rounding' => $this->totalOfCharges(
+                        (float) $existingBreakdown->base_fare,
+                        (float) $existingBreakdown->distance_fare,
+                        (float) $existingBreakdown->time_fare,
+                        (float) $existingBreakdown->surge_amount,
+                        (float) $existingBreakdown->cancellation_fee,
+                        (float) $existingBreakdown->discount_amount,
+                    ),
+                ]);
             } else {
                 // If no pricing rule resolves, the components are left out entirely rather
                 // than sent as null, so distance_fare/time_fare keep their column defaults.
@@ -161,6 +171,11 @@ class BackfillTripPassengerModel extends Command
                     'trip_id' => $trip->id,
                     ...$fareData,
                     ...($fareComponents ?? []),
+                    'final_fare_before_rounding' => $fareComponents === null ? null : $this->totalOfCharges(
+                        $fareComponents['base_fare'],
+                        $fareComponents['distance_fare'],
+                        $fareComponents['time_fare'],
+                    ),
                 ]);
             }
 
@@ -270,6 +285,17 @@ class BackfillTripPassengerModel extends Command
             'distance_fare' => round((float) $pricingRule->per_km_rate * $chargeableDistanceKm, 2),
             'time_fare' => round((float) $pricingRule->per_minute_rate * $durationMinutes, 2),
         ];
+    }
+
+    private function totalOfCharges(
+        float $baseFare,
+        float $distanceFare,
+        float $timeFare,
+        float $surgeAmount = 0.0,
+        float $cancellationFee = 0.0,
+        float $discountAmount = 0.0,
+    ): float {
+        return round($baseFare + $distanceFare + $timeFare + $surgeAmount + $cancellationFee - $discountAmount, 2);
     }
 
     private function pickupArrivedAt(Trip $trip): ?CarbonImmutable
