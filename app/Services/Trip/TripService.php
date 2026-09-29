@@ -221,6 +221,17 @@ readonly class TripService
             'cancellation_reason_id' => $cancellationReasonId,
         ]);
 
+        if ($trip->rider_id !== null) {
+            try {
+                $this->notifyRiderOfCustomerCancellation($trip);
+            } catch (Throwable $e) {
+                Log::error('trip.customer_cancellation_notification_failed', [
+                    'trip_id' => $trip->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
         return $trip->refresh()->load(['vehicleType', 'fareBreakdown', 'deliveryDetails', 'cancellationReason']);
     }
 
@@ -304,6 +315,26 @@ readonly class TripService
                 'pickup_longitude' => (string) $pickup->getLongitude(),
                 'estimated_fare' => (string) $trip->estimated_fare,
                 'currency_code' => $trip->currency_code,
+            ],
+        );
+    }
+
+    private function notifyRiderOfCustomerCancellation(Trip $trip): void
+    {
+        $tokens = $trip->rider->devices
+            ->filter(fn (UserDevice $device): bool => $device->active && filled($device->fcm_token))
+            ->map(fn (UserDevice $device): string => (string) $device->fcm_token)
+            ->unique()
+            ->values()
+            ->all();
+
+        $this->pushGateway->sendToTokens(
+            array_values($tokens),
+            'Trip cancelled',
+            'The customer cancelled the trip.',
+            [
+                'trip_id' => (string) $trip->id,
+                'status' => 'cancelled',
             ],
         );
     }
