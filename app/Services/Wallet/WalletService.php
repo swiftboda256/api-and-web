@@ -183,13 +183,16 @@ readonly class WalletService
         $charge = $breakdown['operator_charge'];
         $walletDebit = round($amount + $charge, 2);
 
-        if ($walletDebit > (float) $wallet->balance) {
-            throw ValidationException::withMessages([
-                'amount' => 'Insufficient wallet balance to cover this withdrawal and the applicable charges.',
-            ]);
-        }
-
         return DB::transaction(function () use ($user, $wallet, $data, $amount, $charge, $baseCharge, $isMobileMoney, $walletDebit): WithdrawalRequest {
+            // Check the balance under a row lock so concurrent withdrawals can't both pass.
+            $wallet = Wallet::query()->whereKey($wallet->id)->lockForUpdate()->first();
+
+            if ($walletDebit > (float) $wallet->balance) {
+                throw ValidationException::withMessages([
+                    'amount' => 'Insufficient wallet balance to cover this withdrawal and the applicable charges.',
+                ]);
+            }
+
             $balanceBefore = (float) $wallet->balance;
             $reference = (string) Str::uuid();
             $result = $isMobileMoney
@@ -206,6 +209,12 @@ readonly class WalletService
             $balanceAfter = $withdrawalFailed
                 ? $balanceBefore
                 : round($balanceBefore - $walletDebit, 2);
+
+            // Debit up front (pending or completed) so the amount can't be spent again
+            // while the payout is in flight; TransactionService refunds it if it fails.
+            if (! $withdrawalFailed) {
+                $wallet->update(['balance' => $balanceAfter]);
+            }
 
             $withdrawalRequest = WithdrawalRequest::query()->create([
                 'user_id' => $user->id,
