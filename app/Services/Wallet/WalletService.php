@@ -195,10 +195,12 @@ readonly class WalletService
 
             $balanceBefore = (float) $wallet->balance;
             $reference = (string) Str::uuid();
+            // Send amount + operator charge: the network deducts its fee from the payout,
+            // so the rider still receives the full requested amount.
             $result = $isMobileMoney
                 ? $this->paymentGateway->disburseToMobileMoney(
                     $data['account_identifier'],
-                    $amount,
+                    $walletDebit,
                     $wallet->currency_code,
                     $reference,
                     'Wallet withdrawal',
@@ -264,7 +266,7 @@ readonly class WalletService
                     'user_id' => $systemUser->id,
                     'wallet_id' => null,
                     'method' => 'mobile_money',
-                    'direction' => 'credit',
+                    'direction' => 'debit',
                     'transaction_type' => 'withdrawal_charge',
                     'amount' => $baseCharge,
                     'currency_code' => $wallet->currency_code,
