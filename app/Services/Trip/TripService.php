@@ -813,6 +813,8 @@ readonly class TripService
             }
         });
 
+        $this->notifyRiderOfCustomerCancellation($passenger);
+
         return $passenger->refresh()->load(['trip', 'stops']);
     }
 
@@ -863,6 +865,8 @@ readonly class TripService
             }
         });
 
+        $this->notifyRiderOfCustomerCancellation($delivery);
+
         return $delivery->refresh()->load(['trip', 'stops']);
     }
 
@@ -877,18 +881,6 @@ readonly class TripService
         throw ValidationException::withMessages([
             'type' => 'Use the passenger or delivery rate endpoint to rate your driver for this trip.',
         ]);
-        if ($trip->rider_id !== null) {
-            try {
-                $this->notifyRiderOfCustomerCancellation($trip);
-            } catch (Throwable $e) {
-                Log::error('trip.customer_cancellation_notification_failed', [
-                    'trip_id' => $trip->id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
-
-        return $trip->refresh()->load(['vehicleType', 'fareBreakdown', 'deliveryDetails', 'cancellationReason']);
     }
 
     /**
@@ -1051,24 +1043,41 @@ readonly class TripService
         );
     }
 
-    private function notifyRiderOfCustomerCancellation(Trip $trip): void
+    private function notifyRiderOfCustomerCancellation(TripPassenger|DeliveryDetails $cancelled): void
     {
-        $tokens = $trip->rider->devices
-            ->filter(fn (UserDevice $device): bool => $device->active && filled($device->fcm_token))
-            ->map(fn (UserDevice $device): string => (string) $device->fcm_token)
-            ->unique()
-            ->values()
-            ->all();
+        $rider = $cancelled->trip->rider;
 
-        $this->pushGateway->sendToTokens(
-            array_values($tokens),
-            'Trip cancelled',
-            'The customer cancelled the trip.',
-            [
-                'trip_id' => (string) $trip->id,
-                'status' => 'cancelled',
-            ],
-        );
+        if ($rider === null) {
+            return;
+        }
+
+        try {
+            $tokens = $rider->devices
+                ->filter(fn (UserDevice $device): bool => $device->active && filled($device->fcm_token))
+                ->map(fn (UserDevice $device): string => (string) $device->fcm_token)
+                ->unique()
+                ->values()
+                ->all();
+
+            $isDelivery = $cancelled instanceof DeliveryDetails;
+
+            $this->pushGateway->sendToTokens(
+                array_values($tokens),
+                $isDelivery ? 'Delivery cancelled' : 'Ride cancelled',
+                $isDelivery ? 'The sender cancelled their delivery.' : 'The passenger cancelled their ride.',
+                [
+                    'trip_id' => (string) $cancelled->trip_id,
+                    ($isDelivery ? 'delivery_details_id' : 'trip_passenger_id') => (string) $cancelled->id,
+                    'status' => 'cancelled',
+                    'trip_status' => (string) $cancelled->trip->fresh()?->status,
+                ],
+            );
+        } catch (Throwable $e) {
+            Log::error('trip.customer_cancellation_notification_failed', [
+                'trip_id' => $cancelled->trip_id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     private function generateTripNumber(): string

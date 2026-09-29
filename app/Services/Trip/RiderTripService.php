@@ -569,14 +569,8 @@ readonly class RiderTripService
         $fareBreakdown = $this->checkout->recalculatePassengerFare($settleable);
         $finalFare = $fareBreakdown['fare'];
         $pricingRule = $this->checkout->resolvePricingRule((int) $trip->zone_id, (int) $trip->vehicle_type_id);
-        $riderEarning = $this->checkout->roundFare(
-            round($finalFare * (1 - (float) $pricingRule->commission_rate / 100), 2),
-        );
+        $riderEarning = $this->riderEarning($finalFare, (float) $pricingRule->commission_rate);
         $commissionAmount = round($finalFare - $riderEarning, 2);
-        return DB::transaction(function () use ($trip, $riderProfile, $proofOfDeliveryPhotoUrl): Trip {
-            $finalFare = $this->checkout->recalculateFare($trip);
-            $riderEarning = $trip->fareBreakdown !== null ? (float) $trip->fareBreakdown->rider_earning : $finalFare;
-            $commissionAmount = round($finalFare - $riderEarning, 2);
 
         // The record holding this settlement's fare/payment fields -- a ride passenger's own
         // TripFareBreakdown row, or the DeliveryDetails row itself (delivery hasn't moved
@@ -604,17 +598,10 @@ readonly class RiderTripService
             ]);
         }
 
-            // Cash trips stay payment_status 'pending' here -- they're settled once the rider
-            // acknowledges receiving the cash via settleCash().
-            if ($trip->payment_method === 'wallet') {
-                $this->settleWalletPayment($trip, $riderProfile, $finalFare, $riderEarning, $commissionAmount);
-            } elseif ($trip->payment_method === 'mobile_money') {
-                $this->settleMobileMoneyPayment($trip, $riderProfile, $finalFare, $riderEarning, $commissionAmount);
-            }
+        // Cash stays payment_status 'pending' here -- it's settled once the rider acknowledges
+        // receiving the cash via settleCash().
         if ($paymentRecord?->payment_method === 'wallet') {
             $this->settleWalletPayment($settleable, $paymentRecord, $riderProfile, $finalFare, $riderEarning, $commissionAmount);
-        } elseif ($paymentRecord?->payment_method === 'cash') {
-            $this->settleCashPayment($settleable, $paymentRecord, $riderProfile, $finalFare, $riderEarning, $commissionAmount);
         } elseif ($paymentRecord?->payment_method === 'mobile_money') {
             $this->settleMobileMoneyPayment($settleable, $paymentRecord, $riderProfile, $finalFare, $riderEarning, $commissionAmount);
         }
@@ -916,38 +903,17 @@ readonly class RiderTripService
     }
 
     /**
-     * Rider acknowledges receiving the cash for a completed cash trip. The rider keeps the
-     * whole fare in hand, so the platform's commission is deducted from their wallet --
-     * which may go negative, but not below the trip zone's minimum_negative_balance.
+     * Rider acknowledges receiving the cash for every dropped-off cash passenger/delivery
+     * on this trip that's still unpaid. The rider keeps the whole fare in hand, so the
+     * platform's commission is deducted from their wallet -- which may go negative, but not
+     * below the trip zone's minimum_negative_balance.
      */
     public function settleCash(User $user, int $tripId): Trip
     {
         $riderProfile = $this->riderProfile($user);
-        $trip = $this->ownRide($user, $tripId)->load(['fareBreakdown', 'zone']);
+        $trip = $this->ownRide($user, $tripId)->load('zone');
 
-        if ($trip->payment_method !== 'cash') {
-            throw ValidationException::withMessages([
-                'payment_method' => 'Only cash trips can be settled this way.',
-            ]);
-        }
-
-        if ($trip->status !== 'completed') {
-            throw ValidationException::withMessages([
-                'status' => 'Only completed trips can be settled.',
-            ]);
-        }
-
-        if ($trip->payment_status === 'paid') {
-            throw ValidationException::withMessages([
-                'payment_status' => 'This trip has already been settled.',
-            ]);
-        }
-
-        $settledTrip = DB::transaction(function () use ($trip, $riderProfile): Trip {
-            $finalFare = (float) $trip->final_fare;
-            $riderEarning = $trip->fareBreakdown !== null ? (float) $trip->fareBreakdown->rider_earning : $finalFare;
-            $commissionAmount = round($finalFare - $riderEarning, 2);
-
+        $settled = DB::transaction(function () use ($trip, $riderProfile): array {
             $riderWallet = Wallet::query()
                 ->where('user_id', $riderProfile->user_id)
                 ->where('status', 'active')
@@ -960,60 +926,109 @@ readonly class RiderTripService
                 ]);
             }
 
-            $balanceBefore = (float) $riderWallet->balance;
-            $balanceAfter = round($balanceBefore - max($commissionAmount, 0), 2);
+            // Read after taking the wallet lock so a concurrent settle can't pay the same
+            // passenger/delivery twice.
+            $settleables = $this->pendingCashSettleables($trip);
+
+            if ($settleables === []) {
+                throw ValidationException::withMessages([
+                    'payment_status' => 'There is no cash payment waiting to be settled on this trip.',
+                ]);
+            }
+
+            $commissionRate = (float) $this->checkout->resolvePricingRule((int) $trip->zone_id, (int) $trip->vehicle_type_id)->commission_rate;
+
+            $settlements = array_map(function (TripPassenger|DeliveryDetails $settleable) use ($commissionRate): array {
+                $paymentRecord = $settleable instanceof TripPassenger ? $settleable->fareBreakdown : $settleable;
+                $finalFare = (float) $paymentRecord->final_fare;
+                // Delivery doesn't store its rider earning, so it's re-derived from the pricing rule.
+                $riderEarning = $paymentRecord instanceof TripFareBreakdown
+                    ? (float) $paymentRecord->rider_earning
+                    : $this->riderEarning($finalFare, $commissionRate);
+
+                return [
+                    'settleable' => $settleable,
+                    'paymentRecord' => $paymentRecord,
+                    'finalFare' => $finalFare,
+                    'riderEarning' => $riderEarning,
+                    'commissionAmount' => round($finalFare - $riderEarning, 2),
+                ];
+            }, $settleables);
+
+            $totalCommission = array_sum(array_map(fn (array $settlement): float => max($settlement['commissionAmount'], 0), $settlements));
             $minimumBalance = (float) ($trip->zone->minimum_negative_balance ?? 0);
 
-            if ($commissionAmount > 0 && $balanceAfter < $minimumBalance) {
+            if ($totalCommission > 0 && round((float) $riderWallet->balance - $totalCommission, 2) < $minimumBalance) {
                 throw ValidationException::withMessages([
                     'wallet' => 'Your wallet balance is too low to cover the commission on this trip. Please top up your wallet.',
                 ]);
             }
 
-            $this->recordCashPayment($trip, $riderProfile, $finalFare, $riderEarning);
-
-            if ($commissionAmount > 0) {
-                $riderWallet->update(['balance' => $balanceAfter]);
-
-                Transaction::query()->create([
-                    'user_id' => $riderProfile->user_id,
-                    'wallet_id' => $riderWallet->id,
-                    'method' => 'wallet',
-                    'direction' => 'debit',
-                    'transaction_type' => 'commission',
-                    'amount' => $commissionAmount,
-                    'currency_code' => $trip->currency_code,
-                    'balance_before' => $balanceBefore,
-                    'balance_after' => $balanceAfter,
-                    'narration' => "Commission for cash trip {$trip->trip_number}",
-                    'reference_type' => Trip::class,
-                    'reference_id' => $trip->id,
-                    'status' => 'completed',
-                ]);
+            foreach ($settlements as $settlement) {
+                $this->settleCashPayment(
+                    $settlement['settleable'],
+                    $settlement['paymentRecord'],
+                    $riderProfile,
+                    $riderWallet,
+                    $settlement['finalFare'],
+                    $settlement['riderEarning'],
+                    $settlement['commissionAmount'],
+                );
             }
 
-            $this->transactionService->recordCommissionTransaction($trip, 'cash', $commissionAmount);
-
-            $trip->update(['payment_status' => 'paid']);
-
-            return $trip->fresh()->load(['vehicleType', 'fareBreakdown', 'deliveryDetails', 'customer']);
+            return $settlements;
         });
 
-        try {
-            $this->notifyCustomerOfCashReceived($settledTrip);
-        } catch (Throwable $e) {
-            Log::error('trip.cash_received_notification_failed', [
-                'trip_id' => $settledTrip->id,
-                'error' => $e->getMessage(),
-            ]);
+        foreach ($settled as $settlement) {
+            try {
+                $this->notifyCustomerOfCashReceived($settlement['settleable'], $settlement['paymentRecord'], $settlement['finalFare']);
+            } catch (Throwable $e) {
+                Log::error('trip.cash_received_notification_failed', [
+                    'trip_id' => $trip->id,
+                    'settleable_type' => $settlement['settleable']::class,
+                    'settleable_id' => $settlement['settleable']->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
 
-        return $settledTrip;
+        return $trip->fresh()->load([
+            'vehicleType', 'cancellationReason',
+            'passengers.customer', 'passengers.stops', 'passengers.fareBreakdown',
+            'deliveries.sender', 'deliveries.stops',
+        ]);
     }
 
-    private function notifyCustomerOfCashReceived(Trip $trip): void
+    /**
+     * @return array<int, TripPassenger|DeliveryDetails>
+     */
+    private function pendingCashSettleables(Trip $trip): array
     {
-        $tokens = $trip->customer->devices
+        if (in_array($trip->type, ['ride', 'ride_share'], true)) {
+            return TripPassenger::query()
+                ->where('trip_id', $trip->id)
+                ->where('status', 'dropped_off')
+                ->whereHas('fareBreakdown', fn ($query) => $query->where('payment_method', 'cash')->where('payment_status', '!=', 'paid'))
+                ->with(['fareBreakdown', 'customer.devices', 'trip'])
+                ->get()
+                ->all();
+        }
+
+        return DeliveryDetails::query()
+            ->where('trip_id', $trip->id)
+            ->where('status', 'dropped_off')
+            ->where('payment_method', 'cash')
+            ->where('payment_status', '!=', 'paid')
+            ->with(['sender.devices', 'trip'])
+            ->get()
+            ->all();
+    }
+
+    private function notifyCustomerOfCashReceived(TripPassenger|DeliveryDetails $settleable, TripFareBreakdown|DeliveryDetails $paymentRecord, float $finalFare): void
+    {
+        $customer = $settleable instanceof DeliveryDetails ? $settleable->sender : $settleable->customer;
+
+        $tokens = $customer->devices
             ->filter(fn (UserDevice $device): bool => $device->active && filled($device->fcm_token))
             ->map(fn (UserDevice $device): string => (string) $device->fcm_token)
             ->unique()
@@ -1023,17 +1038,21 @@ readonly class RiderTripService
         $this->pushGateway->sendToTokens(
             array_values($tokens),
             'Payment received',
-            "Your rider has received your cash payment of {$trip->currency_code} ".number_format((float) $trip->final_fare).'. Thank you for riding with us.',
+            "Your rider has received your cash payment of {$paymentRecord->currency_code} ".number_format($finalFare).'. Thank you for riding with us.',
             [
-                'trip_id' => (string) $trip->id,
-                'status' => 'completed',
+                'trip_id' => (string) $settleable->trip_id,
+                ($settleable instanceof DeliveryDetails ? 'delivery_details_id' : 'trip_passenger_id') => (string) $settleable->id,
                 'payment_status' => 'paid',
             ],
         );
     }
 
-    private function recordCashPayment(Trip $trip, RiderProfile $riderProfile, float $finalFare, float $riderEarning): void
-    private function settleCashPayment(TripPassenger|DeliveryDetails $settleable, TripFareBreakdown|DeliveryDetails $paymentRecord, RiderProfile $riderProfile, float $finalFare, float $riderEarning, float $commissionAmount): void
+    private function riderEarning(float $finalFare, float $commissionRate): float
+    {
+        return round($finalFare * (1 - $commissionRate / 100), 2);
+    }
+
+    private function settleCashPayment(TripPassenger|DeliveryDetails $settleable, TripFareBreakdown|DeliveryDetails $paymentRecord, RiderProfile $riderProfile, Wallet $riderWallet, float $finalFare, float $riderEarning, float $commissionAmount): void
     {
         $customerId = $settleable instanceof DeliveryDetails ? $settleable->sender_id : $settleable->customer_id;
         $referenceClass = $settleable::class;
@@ -1065,6 +1084,29 @@ readonly class RiderTripService
             'reference_id' => $settleable->id,
             'status' => 'completed',
         ]);
+
+        if ($commissionAmount > 0) {
+            $balanceBefore = (float) $riderWallet->balance;
+            $balanceAfter = round($balanceBefore - $commissionAmount, 2);
+
+            $riderWallet->update(['balance' => $balanceAfter]);
+
+            Transaction::query()->create([
+                'user_id' => $riderProfile->user_id,
+                'wallet_id' => $riderWallet->id,
+                'method' => 'wallet',
+                'direction' => 'debit',
+                'transaction_type' => 'commission',
+                'amount' => $commissionAmount,
+                'currency_code' => $paymentRecord->currency_code,
+                'balance_before' => $balanceBefore,
+                'balance_after' => $balanceAfter,
+                'narration' => "Commission for cash trip {$settleable->trip->trip_number}",
+                'reference_type' => $referenceClass,
+                'reference_id' => $settleable->id,
+                'status' => 'completed',
+            ]);
+        }
 
         $this->transactionService->recordPassengerCommissionTransaction($settleable, 'cash', $commissionAmount, $paymentRecord->currency_code);
 
