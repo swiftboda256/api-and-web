@@ -57,6 +57,16 @@ class ResolvePendingTransactionJob implements ShouldQueue
             return;
         }
 
+        // Log check status data
+        Log::info('check_txn_status.result', [
+            'transaction_id' => $transaction->id,
+            'status' => $result->status->value,
+            'transaction_reference' => $result->transactionReference,
+            'gateway_reference' => $result->gatewayReference,
+            'amount' => $result->amount,
+            'failure_reason' => $result->failureReason,
+        ]);
+
         match ($result->status) {
             MobileMoneyTransactionStatus::Succeeded => $transactionService->resolvePendingTransaction(
                 $transaction->id,
