@@ -9,7 +9,7 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
 #[Signature('riders:update-references')]
-#[Description('Backfill existing rider references to the SWFT<district>0000 format, skipping riders already on it')]
+#[Description('Backfill existing rider references to the <district>0000 format, skipping riders already on it')]
 class UpdateRiderReferences extends Command
 {
     public function handle(RiderProfileService $riderProfileService): int

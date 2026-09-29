@@ -28,6 +28,7 @@ readonly class RiderSearchService
             ->where('kyc_status', 'approved')
             ->where('availability_status', 'online')
             ->whereNotNull('current_location')
+            ->withinWalletLimit()
             ->whereHas('vehicle', fn ($query) => $query
                 ->where('status', 'approved')
                 ->when($filters['vehicle_type_id'] ?? null, fn ($query, $vehicleTypeId) => $query->where('vehicle_type_id', $vehicleTypeId)))

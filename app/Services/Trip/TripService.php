@@ -877,6 +877,18 @@ readonly class TripService
         throw ValidationException::withMessages([
             'type' => 'Use the passenger or delivery rate endpoint to rate your driver for this trip.',
         ]);
+        if ($trip->rider_id !== null) {
+            try {
+                $this->notifyRiderOfCustomerCancellation($trip);
+            } catch (Throwable $e) {
+                Log::error('trip.customer_cancellation_notification_failed', [
+                    'trip_id' => $trip->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $trip->refresh()->load(['vehicleType', 'fareBreakdown', 'deliveryDetails', 'cancellationReason']);
     }
 
     /**
@@ -1006,6 +1018,7 @@ readonly class TripService
         $riderProfiles = RiderProfile::query()
             ->where('availability_status', 'online')
             ->whereNotNull('current_location')
+            ->withinWalletLimit()
             ->whereHas('vehicle', fn ($query) => $query->where('vehicle_type_id', $vehicleTypeId)->where('status', 'approved'))
             ->where(ST::distanceSphere('current_location', $pickup), '<=', $radiusMeters)
             ->with('user.devices')
@@ -1034,6 +1047,26 @@ readonly class TripService
                 'pickup_longitude' => (string) $pickup->getLongitude(),
                 'estimated_fare' => (string) $estimatedFare,
                 'currency_code' => $currencyCode,
+            ],
+        );
+    }
+
+    private function notifyRiderOfCustomerCancellation(Trip $trip): void
+    {
+        $tokens = $trip->rider->devices
+            ->filter(fn (UserDevice $device): bool => $device->active && filled($device->fcm_token))
+            ->map(fn (UserDevice $device): string => (string) $device->fcm_token)
+            ->unique()
+            ->values()
+            ->all();
+
+        $this->pushGateway->sendToTokens(
+            array_values($tokens),
+            'Trip cancelled',
+            'The customer cancelled the trip.',
+            [
+                'trip_id' => (string) $trip->id,
+                'status' => 'cancelled',
             ],
         );
     }

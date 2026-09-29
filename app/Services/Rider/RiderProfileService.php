@@ -91,7 +91,7 @@ readonly class RiderProfileService
 
     public function generateRiderRef(int $riderProfileId, string $districtCode): string
     {
-        return 'SWFT'.strtoupper($districtCode).str_pad((string) $riderProfileId, 4, '0', STR_PAD_LEFT);
+        return strtoupper($districtCode).str_pad((string) $riderProfileId, 4, '0', STR_PAD_LEFT);
     }
 
     /**

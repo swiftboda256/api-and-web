@@ -20,6 +20,7 @@ class Zone extends BaseModel
         'boundary',
         'currency_code',
         'timezone',
+        'minimum_negative_balance',
         'is_active',
     ];
 
@@ -27,6 +28,7 @@ class Zone extends BaseModel
     {
         return [
             'boundary' => Polygon::class,
+            'minimum_negative_balance' => 'decimal:2',
             'is_active' => 'boolean',
         ];
     }

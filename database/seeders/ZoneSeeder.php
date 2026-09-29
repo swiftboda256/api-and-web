@@ -16,6 +16,8 @@ class ZoneSeeder extends Seeder
 
     private const float KM_PER_DEGREE = 111.0;
 
+    private const float MINIMUM_NEGATIVE_BALANCE = -10000.0;
+
     public function run(): void
     {
         $districts = [
@@ -64,6 +66,7 @@ class ZoneSeeder extends Seeder
                         'boundary' => $this->boundingBox($district['latitude'], $district['longitude']),
                         'currency_code' => 'UGX',
                         'timezone' => 'Africa/Kampala',
+                        'minimum_negative_balance' => self::MINIMUM_NEGATIVE_BALANCE,
                         'is_active' => true,
                     ],
                 );
