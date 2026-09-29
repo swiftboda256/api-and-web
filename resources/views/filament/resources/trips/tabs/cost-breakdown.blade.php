@@ -58,6 +58,14 @@
                     </div>
                 @endif
 
+                @php($totalBeforeRounding = $breakdown->final_fare_before_rounding ?? $breakdown->estimated_fare_before_rounding)
+                @if ($totalBeforeRounding !== null)
+                    <div class="flex justify-between border-t border-gray-100 pt-2.5 dark:border-white/10">
+                        <dt class="text-gray-500 dark:text-gray-400">Total before rounding</dt>
+                        <dd class="text-gray-950 dark:text-white">{{ $breakdown->currency_code }} {{ number_format((float) $totalBeforeRounding, 2) }}</dd>
+                    </div>
+                @endif
+
                 <div class="flex justify-between border-t border-gray-100 pt-2.5 text-base font-semibold dark:border-white/10">
                     <dt class="text-gray-950 dark:text-white">Total</dt>
                     <dd class="text-gray-950 dark:text-white">{{ $breakdown->currency_code }} {{ number_format((float) ($breakdown->total ?? $breakdown->final_fare ?? $breakdown->estimated_fare), 2) }}</dd>
