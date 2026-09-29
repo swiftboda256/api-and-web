@@ -536,7 +536,7 @@ readonly class RiderTripService
             ]);
         }
 
-        return DB::transaction(function () use ($trip, $riderProfile): Trip {
+        $settledTrip = DB::transaction(function () use ($trip, $riderProfile): Trip {
             $finalFare = (float) $trip->final_fare;
             $riderEarning = $trip->fareBreakdown !== null ? (float) $trip->fareBreakdown->rider_earning : $finalFare;
             $commissionAmount = round($finalFare - $riderEarning, 2);
@@ -591,6 +591,38 @@ readonly class RiderTripService
 
             return $trip->fresh()->load(['vehicleType', 'fareBreakdown', 'deliveryDetails', 'customer']);
         });
+
+        try {
+            $this->notifyCustomerOfCashReceived($settledTrip);
+        } catch (Throwable $e) {
+            Log::error('trip.cash_received_notification_failed', [
+                'trip_id' => $settledTrip->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $settledTrip;
+    }
+
+    private function notifyCustomerOfCashReceived(Trip $trip): void
+    {
+        $tokens = $trip->customer->devices
+            ->filter(fn (UserDevice $device): bool => $device->active && filled($device->fcm_token))
+            ->map(fn (UserDevice $device): string => (string) $device->fcm_token)
+            ->unique()
+            ->values()
+            ->all();
+
+        $this->pushGateway->sendToTokens(
+            array_values($tokens),
+            'Payment received',
+            "Your rider has received your cash payment of {$trip->currency_code} ".number_format((float) $trip->final_fare).'. Thank you for riding with us.',
+            [
+                'trip_id' => (string) $trip->id,
+                'status' => 'completed',
+                'payment_status' => 'paid',
+            ],
+        );
     }
 
     private function recordCashPayment(Trip $trip, RiderProfile $riderProfile, float $finalFare, float $riderEarning): void
