@@ -222,6 +222,13 @@ readonly class TripService
         ]);
 
         if ($trip->rider_id !== null) {
+            // Free the rider for new trips; only touch riders still marked on_trip so an
+            // offline rider isn't flipped back online.
+            RiderProfile::query()
+                ->where('user_id', $trip->rider_id)
+                ->where('availability_status', 'on_trip')
+                ->update(['availability_status' => 'online']);
+
             try {
                 $this->notifyRiderOfCustomerCancellation($trip);
             } catch (Throwable $e) {
