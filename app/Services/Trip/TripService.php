@@ -440,6 +440,7 @@ readonly class TripService
             $seatsRequested,
             $zone,
             $pricingRule,
+            $data['payment_method'],
         );
 
         if ($matched !== null) {
@@ -487,10 +488,7 @@ readonly class TripService
                 'surge_multiplier' => $fare['surge_multiplier'],
                 'surge_amount' => $fare['surge_amount'],
                 'discount_percentage' => $fare['discount_percentage'],
-                'estimated_fare' => $fare['fare'],
-                // calculateRideShareFare() doesn't round to nearest 500 the way bookRide()
-                // does -- recorded as-is (equal to estimated_fare) rather than faking a
-                // rounding step that doesn't actually happen here.
+                'estimated_fare' => $this->checkout->roundFare($fare['fare']),
                 'estimated_fare_before_rounding' => $fare['fare'],
                 'currency_code' => $zone->currency_code,
                 'payment_method' => $data['payment_method'],
@@ -523,7 +521,7 @@ readonly class TripService
         $trip->update(['status' => 'searching']);
 
         try {
-            $this->dispatchToNearbyRiders($trip, $pickup, (int) $data['vehicle_type_id'], $data['pickup_address'] ?? null, $fare['fare'], $zone->currency_code);
+            $this->dispatchToNearbyRiders($trip, $pickup, (int) $data['vehicle_type_id'], $data['pickup_address'] ?? null, $this->checkout->roundFare($fare['fare']), $zone->currency_code);
         } catch (Throwable $e) {
             Log::error('trip.dispatch_failed', [
                 'trip_id' => $trip->id,
@@ -813,6 +811,7 @@ readonly class TripService
             }
         });
 
+        $this->releaseRiderIfTripCancelled($passenger->trip);
         $this->notifyRiderOfCustomerCancellation($passenger);
 
         return $passenger->refresh()->load(['trip', 'stops']);
@@ -830,23 +829,6 @@ readonly class TripService
             ->with('trip')
             ->firstOrFail();
 
-        if ($trip->rider_id !== null) {
-            // Free the rider for new trips; only touch riders still marked on_trip so an
-            // offline rider isn't flipped back online.
-            RiderProfile::query()
-                ->where('user_id', $trip->rider_id)
-                ->where('availability_status', 'on_trip')
-                ->update(['availability_status' => 'online']);
-
-            try {
-                $this->notifyRiderOfCustomerCancellation($trip);
-            } catch (Throwable $e) {
-                Log::error('trip.customer_cancellation_notification_failed', [
-                    'trip_id' => $trip->id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
         if (in_array($delivery->status, ['dropped_off', 'cancelled'], true)) {
             throw ValidationException::withMessages([
                 'status' => 'This delivery can no longer be cancelled.',
@@ -882,6 +864,7 @@ readonly class TripService
             }
         });
 
+        $this->releaseRiderIfTripCancelled($delivery->trip);
         $this->notifyRiderOfCustomerCancellation($delivery);
 
         return $delivery->refresh()->load(['trip', 'stops']);
@@ -1058,6 +1041,24 @@ readonly class TripService
                 'currency_code' => $currencyCode,
             ],
         );
+    }
+
+    /**
+     * Frees the rider for new trips once a customer cancellation has cancelled the whole
+     * trip -- on a shared trip with other passengers/deliveries still aboard, the rider
+     * stays on_trip. Only touches riders still marked on_trip so an offline rider isn't
+     * flipped back online.
+     */
+    private function releaseRiderIfTripCancelled(Trip $trip): void
+    {
+        if ($trip->status !== 'cancelled' || $trip->rider_id === null) {
+            return;
+        }
+
+        RiderProfile::query()
+            ->where('user_id', $trip->rider_id)
+            ->where('availability_status', 'on_trip')
+            ->update(['availability_status' => 'online']);
     }
 
     private function notifyRiderOfCustomerCancellation(TripPassenger|DeliveryDetails $cancelled): void

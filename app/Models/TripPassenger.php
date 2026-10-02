@@ -2,11 +2,15 @@
 
 namespace App\Models;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 
+/**
+ * @property CarbonImmutable|null $picked_up_at
+ */
 class TripPassenger extends BaseModel
 {
     protected $fillable = [

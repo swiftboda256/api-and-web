@@ -59,6 +59,7 @@ readonly class RideShareMatchingService
         int $seatsRequested,
         Zone $zone,
         PricingRule $pricingRule,
+        string $paymentMethod,
     ): ?TripPassenger {
         $best = null;
 
@@ -78,7 +79,7 @@ readonly class RideShareMatchingService
             return null;
         }
 
-        return $this->attach($customer, $pickup, $pickupAddress, $dropoff, $dropoffAddress, $seatsRequested, $zone, $pricingRule, $best);
+        return $this->attach($customer, $pickup, $pickupAddress, $dropoff, $dropoffAddress, $seatsRequested, $zone, $pricingRule, $paymentMethod, $best);
     }
 
     /**
@@ -226,6 +227,7 @@ readonly class RideShareMatchingService
         int $seatsRequested,
         Zone $zone,
         PricingRule $pricingRule,
+        string $paymentMethod,
         array $winner,
     ): ?TripPassenger {
         /** @var Trip $trip */
@@ -260,7 +262,7 @@ readonly class RideShareMatchingService
             now(),
         );
 
-        return DB::transaction(function () use ($trip, $customer, $pickup, $pickupAddress, $dropoff, $dropoffAddress, $seatsRequested, $zone, $passengerLeg, $fare, $winner) {
+        return DB::transaction(function () use ($trip, $customer, $pickup, $pickupAddress, $dropoff, $dropoffAddress, $seatsRequested, $zone, $passengerLeg, $fare, $paymentMethod, $winner) {
             $passenger = TripPassenger::query()->create([
                 'trip_id' => $trip->id,
                 'customer_id' => $customer->id,
@@ -282,9 +284,10 @@ readonly class RideShareMatchingService
                 'surge_multiplier' => $fare['surge_multiplier'],
                 'surge_amount' => $fare['surge_amount'],
                 'discount_percentage' => $fare['discount_percentage'],
-                'estimated_fare' => $fare['fare'],
+                'estimated_fare' => $this->checkout->roundFare($fare['fare']),
                 'estimated_fare_before_rounding' => $fare['fare'],
                 'currency_code' => $zone->currency_code,
+                'payment_method' => $paymentMethod,
                 'payment_status' => 'pending',
             ]);
 

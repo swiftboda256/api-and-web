@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\CarbonImmutable;
 use Clickbar\Magellan\Data\Geometries\Point;
 use Database\Factories\DeliveryDetailsFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -9,6 +10,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 
+/**
+ * @property CarbonImmutable|null $picked_up_at
+ */
 class DeliveryDetails extends BaseModel
 {
     /** @use HasFactory<DeliveryDetailsFactory> */

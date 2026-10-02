@@ -191,10 +191,14 @@ readonly class CheckoutService
             return $this->unresolvedFareBreakdown($settleable);
         }
 
+        // Surge is judged at pickup, not drop-off, so a surge window opening or closing
+        // mid-ride doesn't change what the passenger pays.
+        $pricedAt = $settleable->picked_up_at ?? now();
+
         $fare = match ($trip->type) {
-            'ride_share' => $this->calculateRideShareFare($pricingRule, $trip->zone, (int) $trip->vehicle_type_id, (float) $settleable->distance_km, (int) $settleable->duration_minutes, now()),
-            'delivery_share' => $this->calculateDeliveryShareFare($pricingRule, $trip->zone, (int) $trip->vehicle_type_id, (float) $settleable->distance_km, (int) $settleable->duration_minutes, now()),
-            default => $this->calculateFare($pricingRule, $trip->zone, (int) $trip->vehicle_type_id, (float) $settleable->distance_km, (int) $settleable->duration_minutes, now()),
+            'ride_share' => $this->calculateRideShareFare($pricingRule, $trip->zone, (int) $trip->vehicle_type_id, (float) $settleable->distance_km, (int) $settleable->duration_minutes, $pricedAt),
+            'delivery_share' => $this->calculateDeliveryShareFare($pricingRule, $trip->zone, (int) $trip->vehicle_type_id, (float) $settleable->distance_km, (int) $settleable->duration_minutes, $pricedAt),
+            default => $this->calculateFare($pricingRule, $trip->zone, (int) $trip->vehicle_type_id, (float) $settleable->distance_km, (int) $settleable->duration_minutes, $pricedAt),
         };
 
         return [
