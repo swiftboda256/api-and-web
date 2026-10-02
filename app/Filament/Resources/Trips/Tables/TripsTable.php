@@ -55,6 +55,7 @@ class TripsTable
                     ->options([
                         'requested' => 'Requested',
                         'searching' => 'Searching',
+                        'open' => 'Open for booking',
                         'accepted' => 'Accepted',
                         'arrived' => 'Arrived',
                         'in_progress' => 'In progress',
@@ -67,6 +68,7 @@ class TripsTable
                         'ride_share' => 'Ride share',
                         'delivery' => 'Delivery',
                         'delivery_share' => 'Delivery share',
+                        'posted_ride' => 'Posted ride',
                     ]),
                 TrashedFilter::make(),
             ])

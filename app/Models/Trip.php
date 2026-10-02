@@ -11,8 +11,17 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 /**
- * @property 'ride'|'delivery'|'ride_share'|'delivery_share' $type
+ * @property 'ride'|'delivery'|'ride_share'|'delivery_share'|'posted_ride' $type
+ * @property 'requested'|'searching'|'open'|'accepted'|'arrived'|'in_progress'|'completed'|'cancelled' $status
  * @property CarbonImmutable $requested_at
+ * @property CarbonImmutable|null $departs_at
+ *
+ * Posted-ride only: the driver's own fixed route and per-seat fare, set when posting.
+ * @property float|null $seat_fare
+ * @property Point|null $origin_location
+ * @property string|null $origin_address
+ * @property Point|null $destination_location
+ * @property string|null $destination_address
  * @property CarbonImmutable|null $accepted_at
  * @property CarbonImmutable|null $arrived_at
  * @property CarbonImmutable|null $started_at
@@ -52,10 +61,16 @@ class Trip extends BaseModel
         'available_seats',
         'passenger_count',
         'available_cargo_weight_kg',
+        'seat_fare',
+        'origin_location',
+        'origin_address',
+        'destination_location',
+        'destination_address',
         'route_polyline',
         'route_distance_km',
         'route_duration_minutes',
         'requested_at',
+        'departs_at',
         'accepted_at',
         'arrived_at',
         'started_at',
@@ -69,6 +84,7 @@ class Trip extends BaseModel
     {
         return [
             'requested_at' => 'datetime',
+            'departs_at' => 'datetime',
             'accepted_at' => 'datetime',
             'arrived_at' => 'datetime',
             'started_at' => 'datetime',
@@ -77,6 +93,9 @@ class Trip extends BaseModel
             'available_seats' => 'integer',
             'passenger_count' => 'integer',
             'available_cargo_weight_kg' => 'decimal:2',
+            'seat_fare' => 'decimal:2',
+            'origin_location' => Point::class,
+            'destination_location' => Point::class,
             'route_distance_km' => 'decimal:2',
             'route_duration_minutes' => 'integer',
         ];
@@ -91,7 +110,7 @@ class Trip extends BaseModel
      */
     public function primaryCustomer(): ?User
     {
-        if (in_array($this->type, ['ride', 'ride_share'], true)) {
+        if (in_array($this->type, ['ride', 'ride_share', 'posted_ride'], true)) {
             $passenger = $this->relationLoaded('passengers') ? $this->passengers->first() : $this->passengers()->first();
 
             return $passenger?->customer;
@@ -173,7 +192,7 @@ class Trip extends BaseModel
     }
 
     /**
-     * Ride-share only: the individual passengers matched to this vehicle's shared journey.
+     * Ride-share/posted-ride only: the individual passengers on this vehicle's shared journey.
      *
      * @return HasMany<TripPassenger, $this>
      */

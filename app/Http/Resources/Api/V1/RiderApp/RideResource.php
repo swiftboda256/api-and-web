@@ -23,7 +23,7 @@ class RideResource extends JsonResource
         // columns always held anyway (the earliest/first-joined passenger or delivery's own
         // data). ride_share/delivery_share callers should use the 'ride_share'/'delivery'
         // block below for the full, accurate per-passenger breakdown.
-        $primaryItem = in_array($this->type, ['ride', 'ride_share'], true)
+        $primaryItem = in_array($this->type, ['ride', 'ride_share', 'posted_ride'], true)
             ? ($this->relationLoaded('passengers') ? $this->passengers->first() : null)
             : ($this->relationLoaded('deliveries') ? $this->deliveries->first() : null);
 
@@ -37,7 +37,7 @@ class RideResource extends JsonResource
 
         // rider_earning/commission_amount are only known once a passenger settles (drops
         // off) -- delivery isn't wired up yet.
-        $settledFareBreakdowns = $this->type === 'ride' || $this->type === 'ride_share'
+        $settledFareBreakdowns = in_array($this->type, ['ride', 'ride_share', 'posted_ride'], true)
             ? ($this->relationLoaded('passengers') ? $this->passengers->map(fn ($passenger) => $passenger->fareBreakdown)->filter(fn ($fareBreakdown) => $fareBreakdown?->rider_earning !== null) : null)
             : null;
 
@@ -85,6 +85,25 @@ class RideResource extends JsonResource
                 // Each passenger in the same shape as RidePassengerResource -- including those
                 // still asking to join ('pending_approval'), with their detour and
                 // request_expires_at.
+                'passengers' => $this->whenLoaded('passengers', fn () => RidePassengerResource::collection($this->passengers)->resolve($request)),
+            ] : null,
+            // The driver's own posted route, date and per-seat fare, with every booking --
+            // including requests still waiting on their approval ('pending_approval').
+            'posted_ride' => $this->type === 'posted_ride' ? [
+                'departs_at' => $this->departs_at,
+                'seat_fare' => $this->seat_fare,
+                'origin' => [
+                    'latitude' => $this->origin_location?->getLatitude(),
+                    'longitude' => $this->origin_location?->getLongitude(),
+                    'address' => $this->origin_address,
+                ],
+                'destination' => [
+                    'latitude' => $this->destination_location?->getLatitude(),
+                    'longitude' => $this->destination_location?->getLongitude(),
+                    'address' => $this->destination_address,
+                ],
+                'available_seats' => $this->available_seats,
+                'passenger_count' => $this->passenger_count,
                 'passengers' => $this->whenLoaded('passengers', fn () => RidePassengerResource::collection($this->passengers)->resolve($request)),
             ] : null,
             'delivery' => in_array($this->type, ['delivery', 'delivery_share'], true) ? [

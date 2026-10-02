@@ -46,6 +46,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('cancellation-reasons', [TripCancellationReasonController::class, 'index'])->name('cancellation-reasons');
         Route::get('/', [RideController::class, 'index'])->name('index');
         Route::get('/new', [RideController::class, 'newTrips'])->name('new');
+        Route::post('posted', [RideController::class, 'post'])->name('post');
         Route::get('/{trip}', [RideController::class, 'show'])->name('show')->whereNumber('trip');
         Route::patch('{trip}/accept', [RideController::class, 'accept'])->name('accept');
         Route::patch('{trip}/arrive', [RideController::class, 'arrive'])->name('arrive')->whereNumber('trip');

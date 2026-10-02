@@ -18,7 +18,7 @@ class IndexTripRequest extends FormRequest
     {
         return [
             'status' => ['nullable', 'in:requested,searching,accepted,arrived,in_progress,completed,cancelled'],
-            'type' => ['nullable', 'in:ride,delivery'],
+            'type' => ['nullable', 'in:ride,delivery,ride_share,delivery_share,posted_ride'],
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date', 'after_or_equal:from'],
             'sort_by_fare' => ['nullable', 'in:asc,desc'],

@@ -181,6 +181,22 @@ readonly class CheckoutService
     {
         $trip = $settleable->trip;
 
+        // The driver's own per-seat fare, fixed at booking -- never recomputed by distance,
+        // time or surge, nor rounded.
+        if ($trip->type === 'posted_ride') {
+            $fare = (float) $settleable->fareBreakdown?->estimated_fare;
+
+            return [
+                'base_fare' => $fare,
+                'distance_fare' => 0.0,
+                'time_fare' => 0.0,
+                'surge_multiplier' => 1.0,
+                'surge_amount' => 0.0,
+                'fare_before_rounding' => $fare,
+                'fare' => $fare,
+            ];
+        }
+
         if (! $trip->zone_id || ! $trip->zone) {
             return $this->unresolvedFareBreakdown($settleable);
         }

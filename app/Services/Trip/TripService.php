@@ -38,6 +38,7 @@ readonly class TripService
         private CheckoutService $checkout,
         private RideShareMatchingService $rideShareMatching,
         private DeliveryPoolingMatchingService $deliveryPoolingMatching,
+        private PostedRideService $postedRides,
     ) {}
 
     /**
@@ -57,7 +58,7 @@ readonly class TripService
             return $this->listDeliveries($user, $filters);
         }
 
-        if (in_array($type, ['ride', 'ride_share'], true)) {
+        if (in_array($type, ['ride', 'ride_share', 'posted_ride'], true)) {
             return $this->listPassengerTrips($user, $filters);
         }
 
@@ -859,6 +860,14 @@ readonly class TripService
             ]);
         }
 
+        // A posted ride carries on whoever cancels -- it's the driver's own trip.
+        if ($passenger->trip->type === 'posted_ride') {
+            $this->postedRides->cancelBooking($passenger, $user, $cancellationReasonId);
+            $this->notifyRiderOfCustomerCancellation($passenger);
+
+            return $passenger->refresh()->load($this->passengerEagerLoads());
+        }
+
         // Still waiting on a driver: withdraw the offer (returning its held seats). Their
         // stops were never on the route (no sequence) and stay that way, kept for history --
         // so there are no route or passenger-count changes to undo.
@@ -1061,7 +1070,7 @@ readonly class TripService
      */
     public function dispatchDueTrip(Trip $trip): void
     {
-        $isRide = in_array($trip->type, ['ride', 'ride_share'], true);
+        $isRide = in_array($trip->type, ['ride', 'ride_share', 'posted_ride'], true);
 
         $item = $isRide
             ? TripPassenger::query()->where('trip_id', $trip->id)->with('fareBreakdown')->oldest('requested_at')->first()

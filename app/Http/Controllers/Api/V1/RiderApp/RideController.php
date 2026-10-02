@@ -8,12 +8,14 @@ use App\Http\Requests\Api\V1\RiderApp\Ride\EndRideRequest;
 use App\Http\Requests\Api\V1\RiderApp\Ride\IndexRideRequest;
 use App\Http\Requests\Api\V1\RiderApp\Ride\LogRideLocationRequest;
 use App\Http\Requests\Api\V1\RiderApp\Ride\NearbyRidesRequest;
+use App\Http\Requests\Api\V1\RiderApp\Ride\PostRideRequest;
 use App\Http\Resources\Api\V1\RiderApp\RideCollection;
 use App\Http\Resources\Api\V1\RiderApp\RideDeliveryResource;
 use App\Http\Resources\Api\V1\RiderApp\RideLocationResource;
 use App\Http\Resources\Api\V1\RiderApp\RidePassengerResource;
 use App\Http\Resources\Api\V1\RiderApp\RideResource;
 use App\Models\User;
+use App\Services\Trip\PostedRideService;
 use App\Services\Trip\RiderTripService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -42,6 +44,17 @@ class RideController extends Controller
         $user = $request->user();
 
         return self::success(new RideResource($riderTripService->show($user, $trip)));
+    }
+
+    /**
+     * Posts a ride for customers to book seats on -- see PostedRideService.
+     */
+    public function post(PostRideRequest $request, PostedRideService $postedRideService): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        return self::success(new RideResource($postedRideService->post($user, $request->validated())), status: 201);
     }
 
     public function accept(Request $request, int $trip, RiderTripService $riderTripService): JsonResponse

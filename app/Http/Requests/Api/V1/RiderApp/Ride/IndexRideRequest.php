@@ -17,8 +17,8 @@ class IndexRideRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'status' => ['nullable', 'in:requested,searching,accepted,arrived,in_progress,completed,cancelled'],
-            'type' => ['nullable', 'in:ride,delivery'],
+            'status' => ['nullable', 'in:requested,searching,open,accepted,arrived,in_progress,completed,cancelled'],
+            'type' => ['nullable', 'in:ride,delivery,ride_share,delivery_share,posted_ride'],
             'min_fare' => ['nullable', 'numeric', 'min:0'],
             'max_fare' => ['nullable', 'numeric', 'min:0', 'gte:min_fare'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],

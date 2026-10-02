@@ -44,6 +44,7 @@ readonly class RiderTripService
         private TransactionService $transactionService,
         private RideShareMatchingService $rideShareMatching,
         private TripService $tripService,
+        private PostedRideService $postedRides,
     ) {}
 
     /**
@@ -235,6 +236,10 @@ readonly class RiderTripService
     {
         $trip = $this->ownRide($user, $tripId);
 
+        if ($trip->type === 'posted_ride') {
+            return $this->startPostedRide($user, $trip);
+        }
+
         if (! in_array($trip->status, ['accepted', 'arrived'], true)) {
             throw ValidationException::withMessages([
                 'status' => 'This ride cannot be started from its current status.',
@@ -253,6 +258,43 @@ readonly class RiderTripService
         }
 
         return $trip->refresh()->load(['vehicleType', 'deliveries.sender', 'passengers.customer', 'passengers.fareBreakdown']);
+    }
+
+    /**
+     * Posted ride: open -> in_progress. Needs at least one approved booking; requests the
+     * driver never answered are declined, since bookings can't be approved once it's
+     * under way. Each passenger is then picked up/dropped off individually.
+     */
+    private function startPostedRide(User $user, Trip $trip): Trip
+    {
+        if ($trip->status !== 'open') {
+            throw ValidationException::withMessages([
+                'status' => 'This ride cannot be started from its current status.',
+            ]);
+        }
+
+        if (! TripPassenger::query()->where('trip_id', $trip->id)->where('status', 'matched')->exists()) {
+            throw ValidationException::withMessages([
+                'trip' => 'Approve at least one booking before starting this ride.',
+            ]);
+        }
+
+        if (Trip::query()->where('rider_id', $user->id)->whereKeyNot($trip->id)->whereIn('status', self::ACTIVE_STATUSES)->exists()) {
+            throw ValidationException::withMessages([
+                'trip' => 'Finish your current trip before starting this ride.',
+            ]);
+        }
+
+        $this->postedRides->declineOutstanding($trip, $user);
+
+        $trip->update([
+            'status' => 'in_progress',
+            'started_at' => now(),
+        ]);
+
+        $this->riderProfile($user)->update(['availability_status' => 'on_trip']);
+
+        return $trip->refresh()->load(['vehicleType', 'passengers.customer', 'passengers.stops', 'passengers.fareBreakdown']);
     }
 
     /**
@@ -315,6 +357,10 @@ readonly class RiderTripService
     {
         $riderProfile = $this->riderProfile($user);
         $trip = $this->ownRide($user, $tripId);
+
+        if ($trip->type === 'posted_ride') {
+            return $this->cancelPostedRide($user, $riderProfile, $trip, $cancellationReasonId);
+        }
 
         if (! in_array($trip->status, self::ACTIVE_STATUSES, true)) {
             throw ValidationException::withMessages([
@@ -405,6 +451,29 @@ readonly class RiderTripService
     }
 
     /**
+     * Posted ride: cancels the whole ride and every booking on it. It isn't re-dispatched
+     * to another driver like an on-demand trip -- the ride was this driver's own offer.
+     */
+    private function cancelPostedRide(User $user, RiderProfile $riderProfile, Trip $trip, ?int $cancellationReasonId): Trip
+    {
+        if (! in_array($trip->status, ['open', 'in_progress'], true)) {
+            throw ValidationException::withMessages([
+                'status' => 'This ride can no longer be cancelled.',
+            ]);
+        }
+
+        $wasInProgress = $trip->status === 'in_progress';
+
+        $this->postedRides->cancelTrip($trip, $user, $cancellationReasonId);
+
+        if ($wasInProgress) {
+            $riderProfile->update(['availability_status' => 'online']);
+        }
+
+        return $trip->refresh()->load(['vehicleType', 'cancellationReason', 'passengers.customer', 'passengers.stops', 'passengers.fareBreakdown']);
+    }
+
+    /**
      * Ride-share only: the driver accepts a passenger asking to join their ongoing trip,
      * adding the passenger's pickup/dropoff to the route. If the trip can no longer fit
      * them, the request is released and re-offered elsewhere, and the driver gets an error.
@@ -412,6 +481,10 @@ readonly class RiderTripService
     public function acceptPassenger(User $user, int $tripId, int $tripPassengerId): TripPassenger
     {
         $passenger = $this->pendingPassenger($user, $tripId, $tripPassengerId);
+
+        if ($passenger->trip->type === 'posted_ride') {
+            return $this->postedRides->approve($passenger)->fresh()->load(['customer', 'fareBreakdown', 'stops']);
+        }
         $accepted = $this->rideShareMatching->accept($passenger);
 
         if ($accepted === null) {
@@ -436,6 +509,12 @@ readonly class RiderTripService
     {
         $passenger = $this->pendingPassenger($user, $tripId, $tripPassengerId);
 
+        if ($passenger->trip->type === 'posted_ride') {
+            $this->postedRides->decline($passenger, $user);
+
+            return;
+        }
+
         if ($this->rideShareMatching->release($passenger)) {
             $this->tripService->reofferRideShareRequest($passenger);
         }
@@ -445,9 +524,9 @@ readonly class RiderTripService
     {
         $trip = $this->ownRide($user, $tripId);
 
-        if ($trip->type !== 'ride_share') {
+        if (! in_array($trip->type, ['ride_share', 'posted_ride'], true)) {
             throw ValidationException::withMessages([
-                'type' => 'This action is only available on ride-share trips.',
+                'type' => 'This action is only available on ride-share and posted-ride trips.',
             ]);
         }
 
@@ -455,7 +534,8 @@ readonly class RiderTripService
             ->where('trip_id', $tripId)
             ->where('id', $tripPassengerId)
             ->where('status', 'pending_approval')
-            ->first();
+            ->first()
+            ?->setRelation('trip', $trip);
 
         if ($passenger === null) {
             throw ValidationException::withMessages([
@@ -475,9 +555,9 @@ readonly class RiderTripService
     {
         $trip = $this->ownRide($user, $tripId);
 
-        if ($trip->type !== 'ride_share') {
+        if (! in_array($trip->type, ['ride_share', 'posted_ride'], true)) {
             throw ValidationException::withMessages([
-                'type' => 'This action is only available on ride-share trips.',
+                'type' => 'This action is only available on ride-share and posted-ride trips.',
             ]);
         }
 
@@ -555,9 +635,9 @@ readonly class RiderTripService
         $riderProfile = $this->riderProfile($user);
         $trip = $this->ownRide($user, $tripId)->load('zone');
 
-        if ($trip->type !== 'ride_share') {
+        if (! in_array($trip->type, ['ride_share', 'posted_ride'], true)) {
             throw ValidationException::withMessages([
-                'type' => 'This action is only available on ride-share trips.',
+                'type' => 'This action is only available on ride-share and posted-ride trips.',
             ]);
         }
 
@@ -688,7 +768,7 @@ readonly class RiderTripService
      */
     private function maybeCompleteTrip(Trip $trip, RiderProfile $riderProfile): void
     {
-        $hasActive = in_array($trip->type, ['ride', 'ride_share'], true)
+        $hasActive = in_array($trip->type, ['ride', 'ride_share', 'posted_ride'], true)
             ? TripPassenger::query()->where('trip_id', $trip->id)->whereIn('status', self::ACTIVE_PASSENGER_STATUSES)->exists()
             : DeliveryDetails::query()->where('trip_id', $trip->id)->whereIn('status', self::ACTIVE_PASSENGER_STATUSES)->exists();
 
@@ -705,7 +785,7 @@ readonly class RiderTripService
         $riderProfile = $this->riderProfile($user);
         $trip = $this->ownRide($user, $tripId)->load('zone');
 
-        if (in_array($trip->type, ['ride_share', 'delivery_share'], true)) {
+        if (in_array($trip->type, ['ride_share', 'delivery_share', 'posted_ride'], true)) {
             throw ValidationException::withMessages([
                 'type' => 'Shared trips are ended by dropping off each passenger/delivery individually, not as a whole trip.',
             ]);
@@ -996,7 +1076,7 @@ readonly class RiderTripService
         $riderProfile = $this->riderProfile($user);
         $trip = $this->ownRide($user, $tripId)->load('zone');
 
-        if (! in_array($trip->type, ['ride', 'ride_share'], true)) {
+        if (! in_array($trip->type, ['ride', 'ride_share', 'posted_ride'], true)) {
             throw ValidationException::withMessages([
                 'type' => 'This action is only available on ride and ride-share trips.',
             ]);
@@ -1122,7 +1202,7 @@ readonly class RiderTripService
      */
     private function pendingCashSettleables(Trip $trip, ?int $settleableId = null): array
     {
-        if (in_array($trip->type, ['ride', 'ride_share'], true)) {
+        if (in_array($trip->type, ['ride', 'ride_share', 'posted_ride'], true)) {
             return TripPassenger::query()
                 ->where('trip_id', $trip->id)
                 ->when($settleableId !== null, fn ($query) => $query->where('id', $settleableId))

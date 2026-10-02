@@ -36,6 +36,8 @@ class TripPassengerResource extends JsonResource
             'type' => $trip->type,
             'available_seats' => $trip->available_seats,
             'passenger_count' => $trip->passenger_count,
+            // Posted rides only: when the driver plans to leave.
+            'departs_at' => $trip->departs_at,
             'accepted_at' => $trip->accepted_at,
             'arrived_at' => $trip->arrived_at,
             'started_at' => $trip->started_at,

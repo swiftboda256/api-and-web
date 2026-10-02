@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\V1\UserApp\AuthController;
 use App\Http\Controllers\Api\V1\UserApp\DeviceController;
 use App\Http\Controllers\Api\V1\UserApp\EmergencyContactController;
 use App\Http\Controllers\Api\V1\UserApp\NotificationController;
+use App\Http\Controllers\Api\V1\UserApp\PostedRideController;
 use App\Http\Controllers\Api\V1\UserApp\ProfileController;
 use App\Http\Controllers\Api\V1\UserApp\PromoCodeController;
 use App\Http\Controllers\Api\V1\UserApp\RiderController;
@@ -51,6 +52,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('cancellation-reasons', [TripCancellationReasonController::class, 'index'])->name('cancellation-reasons');
         Route::get('nearby-riders', [RiderController::class, 'nearbyRiders'])->name('riders');
         Route::get('/', [TripController::class, 'index'])->name('index');
+        Route::get('posted', [PostedRideController::class, 'index'])->name('posted.index');
+        Route::get('posted/{trip}', [PostedRideController::class, 'show'])->name('posted.show')->whereNumber('trip');
+        Route::post('posted/{trip}/book', [PostedRideController::class, 'book'])->name('posted.book')->whereNumber('trip');
         Route::get('/{trip}', [TripController::class, 'show'])->name('show');
         Route::post('estimate', [TripController::class, 'estimateTrip'])->name('estimate');
         Route::post('schedule', [TripController::class, 'schedule'])->name('schedule');
