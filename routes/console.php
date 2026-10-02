@@ -11,6 +11,6 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-//Schedule::command(DispatchScheduledTrips::class)->everyMinute()->withoutOverlapping();
-//Schedule::command(ResolvePendingTransactions::class)->everyTwoSeconds()->withoutOverlapping();
+Schedule::command(DispatchScheduledTrips::class)->everyMinute()->withoutOverlapping();
+Schedule::command(ResolvePendingTransactions::class)->everyTwoSeconds()->withoutOverlapping();
 Schedule::command(ExpireRideShareJoinRequests::class)->everyFiveSeconds()->withoutOverlapping();
