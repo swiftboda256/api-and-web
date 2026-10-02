@@ -72,8 +72,9 @@ readonly class CheckoutService
         float $distanceKm,
         int $durationMinutes,
         CarbonInterface $at,
+        bool $applySurge = true,
     ): array {
-        $surgeSchedule = $this->resolveSurgeSchedule($zone, $vehicleTypeId, $at);
+        $surgeSchedule = $applySurge ? $this->resolveSurgeSchedule($zone, $vehicleTypeId, $at) : null;
 
         // During a surge window the schedule's fixed_amount replaces the pricing rule's base fare.
         $baseFare = $surgeSchedule && (float) $surgeSchedule->fixed_amount > 0
@@ -87,7 +88,6 @@ readonly class CheckoutService
             : (float) $pricingRule->per_km_rate;
         $distanceFare = round($perKmRate * $chargeableDistanceKm, 2);
         $timeFare = round((float) $pricingRule->per_minute_rate * $durationMinutes, 2);
-
         $subtotal = $baseFare + $distanceFare + $timeFare;
         $fare = max($subtotal, (float) $pricingRule->minimum_fare);
 
@@ -301,7 +301,7 @@ readonly class CheckoutService
         return floor($fare / 500) * 500;
     }
 
-    private function findPricingRule(int $zoneId, int $vehicleTypeId, ?CarbonInterface $at = null): ?PricingRule
+    public function findPricingRule(int $zoneId, int $vehicleTypeId, ?CarbonInterface $at = null): ?PricingRule
     {
         $at ??= now();
 
