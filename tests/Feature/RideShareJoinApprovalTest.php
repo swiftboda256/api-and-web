@@ -111,7 +111,7 @@ function orderRideShare($test): TripPassenger
 {
     Sanctum::actingAs($test->customer);
 
-    $response = $test->postJson('/api/v1/user-app/trips/order-ride-share', [
+    $response = $test->postJson('/api/v1/user-app/trips/order-ride', [
         'type' => 'ride_share',
         'vehicle_type_id' => $test->vehicleType->id,
         'pickup_latitude' => 0.3400,
@@ -162,7 +162,7 @@ test('booking offers the passenger to the ongoing trip as pending_approval and n
 test('the booking response hides the rider while pending approval', function () {
     Sanctum::actingAs($this->customer);
 
-    $response = $this->postJson('/api/v1/user-app/trips/order-ride-share', [
+    $response = $this->postJson('/api/v1/user-app/trips/order-ride', [
         'type' => 'ride_share',
         'vehicle_type_id' => $this->vehicleType->id,
         'pickup_latitude' => 0.3400, 'pickup_longitude' => 32.5825,
@@ -308,7 +308,7 @@ test('releasing twice does not return the held seats twice', function () {
 test('the customer can cancel while pending approval, releasing the seats and stops', function () {
     $passenger = orderRideShare($this);
 
-    $this->patchJson("/api/v1/user-app/trips/cancel-ride-share/{$passenger->id}")->assertOk();
+    $this->patchJson("/api/v1/user-app/trips/cancel-ride/{$passenger->trip_id}")->assertOk();
 
     expect($passenger->fresh()->status)->toBe('cancelled')
         ->and(TripStop::query()->where('trip_passenger_id', $passenger->id)->count())->toBe(0)

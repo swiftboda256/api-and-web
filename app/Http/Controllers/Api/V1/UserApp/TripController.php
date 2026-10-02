@@ -73,16 +73,17 @@ class TripController extends Controller
     }
 
     /**
-     * Kept only so a client still on the old trip-id-based cancel endpoint gets a clear
-     * validation error (via TripService::cancel(), which always throws now) instead of a
-     * crash -- every trip type cancels through cancelPassenger()/cancelDelivery() instead.
+     * Cancels the customer's own booking on the given vehicle trip ({trip} = trip_id), for
+     * every trip type -- see TripService::cancel().
      */
     public function cancel(CancelTripRequest $request, int $trip, TripService $tripService): JsonResponse
     {
         /** @var User $user */
         $user = $request->user();
 
-        $tripService->cancel($user, $trip, $request->validated('cancellation_reason_id'));
+        $booking = $tripService->cancel($user, $trip, $request->validated('cancellation_reason_id'));
+
+        return self::success($this->bookingResource($booking));
     }
 
     /**
@@ -97,16 +98,6 @@ class TripController extends Controller
         $tripService->rateRider($user, $trip, $request->validated());
     }
 
-    public function cancelPassenger(CancelTripRequest $request, int $tripPassenger, TripService $tripService): JsonResponse
-    {
-        /** @var User $user */
-        $user = $request->user();
-
-        $passenger = $tripService->cancelPassenger($user, $tripPassenger, $request->validated('cancellation_reason_id'));
-
-        return self::success(new TripPassengerResource($passenger));
-    }
-
     public function ratePassengerDriver(RateTripRequest $request, int $tripPassenger, TripService $tripService): JsonResponse
     {
         /** @var User $user */
@@ -115,16 +106,6 @@ class TripController extends Controller
         $rating = $tripService->ratePassengerDriver($user, $tripPassenger, $request->validated());
 
         return self::success(new RatingResource($rating), status: 201);
-    }
-
-    public function cancelDelivery(CancelTripRequest $request, int $delivery, TripService $tripService): JsonResponse
-    {
-        /** @var User $user */
-        $user = $request->user();
-
-        $delivery = $tripService->cancelDelivery($user, $delivery, $request->validated('cancellation_reason_id'));
-
-        return self::success(new DeliveryResource($delivery));
     }
 
     public function rateDeliveryDriver(RateTripRequest $request, int $delivery, TripService $tripService): JsonResponse

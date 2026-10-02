@@ -805,15 +805,35 @@ readonly class TripService
     }
 
     /**
-     * Every trip type now settles through cancelPassenger()/cancelDelivery() instead --
-     * kept as a guarded stub (rather than removed) so any client still hitting the old
-     * trip-id-based cancel endpoint gets a clear validation error instead of a crash.
+     * The customer cancels their own booking on a vehicle trip. The trip's type decides the
+     * handler: ride/ride_share cancel the customer's passenger record (cancelPassenger()),
+     * delivery/delivery_share their delivery (cancelDelivery()). Only that booking is
+     * cancelled -- anyone else on a shared trip is unaffected. If the customer somehow has
+     * more than one booking on the trip, a still-active one is picked over a finished one.
      */
-    public function cancel(User $user, int $tripId, ?int $cancellationReasonId): never
+    public function cancel(User $user, int $tripId, ?int $cancellationReasonId): TripPassenger|DeliveryDetails
     {
-        throw ValidationException::withMessages([
-            'type' => 'Use the passenger or delivery cancel endpoint to cancel this trip.',
-        ]);
+        $trip = Trip::query()->findOrFail($tripId);
+
+        if (in_array($trip->type, ['delivery', 'delivery_share'], true)) {
+            $delivery = DeliveryDetails::query()
+                ->where('trip_id', $trip->id)
+                ->where('sender_id', $user->id)
+                ->orderByRaw("status IN ('dropped_off', 'cancelled')")
+                ->latest('id')
+                ->firstOrFail();
+
+            return $this->cancelDelivery($user, $delivery->id, $cancellationReasonId);
+        }
+
+        $passenger = TripPassenger::query()
+            ->where('trip_id', $trip->id)
+            ->where('customer_id', $user->id)
+            ->orderByRaw("status IN ('dropped_off', 'cancelled')")
+            ->latest('id')
+            ->firstOrFail();
+
+        return $this->cancelPassenger($user, $passenger->id, $cancellationReasonId);
     }
 
     /**
