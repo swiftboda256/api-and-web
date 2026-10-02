@@ -181,6 +181,16 @@ class ConfigurationSeeder extends Seeder
         );
 
         Configuration::query()->firstOrCreate(
+            ['key' => 'ride_share_join_request_timeout_seconds'],
+            [
+                'value' => 30,
+                'group' => 'ride_share',
+                'description' => 'Seconds a driver has to accept a passenger\'s request to join their ongoing ride-share trip before it counts as declined and is offered to the next trip.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
             ['key' => 'delivery_share_discount_percentage'],
             [
                 'value' => 20,

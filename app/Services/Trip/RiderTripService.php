@@ -42,6 +42,8 @@ readonly class RiderTripService
         private CheckoutService $checkout,
         private PaymentGateway $paymentGateway,
         private TransactionService $transactionService,
+        private RideShareMatchingService $rideShareMatching,
+        private TripService $tripService,
     ) {}
 
     /**
@@ -105,7 +107,7 @@ readonly class RiderTripService
         // so its pickup stop is the trip's pickup point.
         $pickupStopLocation = DB::raw(<<<'SQL'
             COALESCE(
-                (SELECT location FROM trip_stops WHERE trip_stops.trip_id = trips.id AND trip_stops.stop_type = 'pickup' ORDER BY trip_stops.sequence ASC LIMIT 1),
+                (SELECT location FROM trip_stops WHERE trip_stops.trip_id = trips.id AND trip_stops.stop_type = 'pickup' AND trip_stops.sequence IS NOT NULL ORDER BY trip_stops.sequence ASC LIMIT 1),
                 (SELECT location FROM delivery_stops WHERE delivery_stops.trip_id = trips.id AND delivery_stops.stop_type = 'pickup' ORDER BY delivery_stops.sequence ASC LIMIT 1)
             )
             SQL);
@@ -355,7 +357,7 @@ readonly class RiderTripService
         // pickup stop recorded for this trip, which is what trip->pickup_location always
         // pointed at anyway (the first passenger/delivery's pickup point).
         $pickupStop = in_array($trip->type, ['ride', 'ride_share'], true)
-            ? TripStop::query()->where('trip_id', $trip->id)->where('stop_type', 'pickup')->orderBy('sequence')->first()
+            ? TripStop::query()->where('trip_id', $trip->id)->where('stop_type', 'pickup')->whereNotNull('sequence')->orderBy('sequence')->first()
             : DeliveryStop::query()->where('trip_id', $trip->id)->where('stop_type', 'pickup')->orderBy('sequence')->first();
         $pickup = $pickupStop?->location;
         $vehicleTypeId = (int) $trip->vehicle_type_id;
@@ -400,6 +402,68 @@ readonly class RiderTripService
         }
 
         return $trip;
+    }
+
+    /**
+     * Ride-share only: the driver accepts a passenger asking to join their ongoing trip,
+     * adding the passenger's pickup/dropoff to the route. If the trip can no longer fit
+     * them, the request is released and re-offered elsewhere, and the driver gets an error.
+     */
+    public function acceptPassenger(User $user, int $tripId, int $tripPassengerId): TripPassenger
+    {
+        $passenger = $this->pendingPassenger($user, $tripId, $tripPassengerId);
+        $accepted = $this->rideShareMatching->accept($passenger);
+
+        if ($accepted === null) {
+            if ($this->rideShareMatching->release($passenger)) {
+                $this->tripService->reofferRideShareRequest($passenger);
+            }
+
+            throw ValidationException::withMessages([
+                'trip' => 'This passenger can no longer fit on your trip.',
+            ]);
+        }
+
+        return $accepted->fresh()->load(['customer', 'fareBreakdown', 'stops']);
+    }
+
+    /**
+     * Ride-share only: the driver declines a passenger asking to join their trip. The held
+     * seats are returned and the request moves on to the next-best ongoing trip, or a
+     * brand-new trip if none fits.
+     */
+    public function declinePassenger(User $user, int $tripId, int $tripPassengerId): void
+    {
+        $passenger = $this->pendingPassenger($user, $tripId, $tripPassengerId);
+
+        if ($this->rideShareMatching->release($passenger)) {
+            $this->tripService->reofferRideShareRequest($passenger);
+        }
+    }
+
+    private function pendingPassenger(User $user, int $tripId, int $tripPassengerId): TripPassenger
+    {
+        $trip = $this->ownRide($user, $tripId);
+
+        if ($trip->type !== 'ride_share') {
+            throw ValidationException::withMessages([
+                'type' => 'This action is only available on ride-share trips.',
+            ]);
+        }
+
+        $passenger = TripPassenger::query()
+            ->where('trip_id', $tripId)
+            ->where('id', $tripPassengerId)
+            ->where('status', 'pending_approval')
+            ->first();
+
+        if ($passenger === null) {
+            throw ValidationException::withMessages([
+                'trip_passenger_id' => 'This passenger is not waiting for your approval.',
+            ]);
+        }
+
+        return $passenger;
     }
 
     /**

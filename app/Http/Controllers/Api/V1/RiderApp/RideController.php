@@ -84,6 +84,24 @@ class RideController extends Controller
         return self::success(new RideResource($riderTripService->end($user, $trip, $request->file('proof_of_delivery_photo'))));
     }
 
+    public function acceptPassenger(Request $request, int $trip, int $passenger, RiderTripService $riderTripService): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        return self::success(new RidePassengerResource($riderTripService->acceptPassenger($user, $trip, $passenger)), 'Passenger accepted.');
+    }
+
+    public function declinePassenger(Request $request, int $trip, int $passenger, RiderTripService $riderTripService): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $riderTripService->declinePassenger($user, $trip, $passenger);
+
+        return self::success(null, 'Passenger declined.');
+    }
+
     public function pickUpPassenger(Request $request, int $trip, int $passenger, RiderTripService $riderTripService): JsonResponse
     {
         /** @var User $user */

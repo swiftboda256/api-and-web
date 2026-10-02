@@ -9,7 +9,10 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 /**
+ * @property 'requested'|'pending_approval'|'matched'|'arrived_pickup'|'picked_up'|'arrived_dropoff'|'dropped_off'|'cancelled' $status
  * @property CarbonImmutable|null $picked_up_at
+ * @property CarbonImmutable|null $request_expires_at
+ * @property list<int>|null $declined_trip_ids
  */
 class TripPassenger extends BaseModel
 {
@@ -20,8 +23,12 @@ class TripPassenger extends BaseModel
         'status',
         'distance_km',
         'duration_minutes',
+        'detour_minutes',
+        'detour_km',
         'promo_code_id',
         'requested_at',
+        'request_expires_at',
+        'declined_trip_ids',
         'matched_at',
         'picked_up_at',
         'dropped_off_at',
@@ -36,7 +43,11 @@ class TripPassenger extends BaseModel
             'seats_requested' => 'integer',
             'distance_km' => 'decimal:2',
             'duration_minutes' => 'integer',
+            'detour_minutes' => 'integer',
+            'detour_km' => 'decimal:2',
             'requested_at' => 'datetime',
+            'request_expires_at' => 'datetime',
+            'declined_trip_ids' => 'array',
             'matched_at' => 'datetime',
             'picked_up_at' => 'datetime',
             'dropped_off_at' => 'datetime',

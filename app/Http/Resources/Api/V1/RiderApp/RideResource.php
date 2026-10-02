@@ -82,29 +82,10 @@ class RideResource extends JsonResource
                 'available_seats' => $this->available_seats,
                 'passenger_count' => $this->passenger_count,
                 'route_polyline' => $this->route_polyline,
-                'passengers' => $this->whenLoaded('passengers', fn () => $this->passengers->map(fn ($passenger) => [
-                    'id' => $passenger->id,
-                    'status' => $passenger->status,
-                    'customer' => [
-                        'id' => $passenger->customer->id,
-                        'name' => $passenger->customer->name,
-                        'phone' => $passenger->customer->phone,
-                    ],
-                    'pickup' => optional($passenger->stops->firstWhere('stop_type', 'pickup'), fn ($stop) => [
-                        'latitude' => $stop->location->getLatitude(),
-                        'longitude' => $stop->location->getLongitude(),
-                        'address' => $stop->address,
-                        'arrived_at' => $stop->arrived_at,
-                    ]),
-                    'dropoff' => optional($passenger->stops->firstWhere('stop_type', 'dropoff'), fn ($stop) => [
-                        'latitude' => $stop->location->getLatitude(),
-                        'longitude' => $stop->location->getLongitude(),
-                        'address' => $stop->address,
-                        'arrived_at' => $stop->arrived_at,
-                    ]),
-                    'estimated_fare' => $passenger->fareBreakdown?->estimated_fare,
-                    'final_fare' => $passenger->fareBreakdown?->final_fare,
-                ])->all()),
+                // Each passenger in the same shape as RidePassengerResource -- including those
+                // still asking to join ('pending_approval'), with their detour and
+                // request_expires_at.
+                'passengers' => $this->whenLoaded('passengers', fn () => RidePassengerResource::collection($this->passengers)->resolve($request)),
             ] : null,
             'delivery' => in_array($this->type, ['delivery', 'delivery_share'], true) ? [
                 'available_cargo_weight_kg' => $this->available_cargo_weight_kg,

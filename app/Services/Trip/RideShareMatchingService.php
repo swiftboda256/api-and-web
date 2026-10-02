@@ -10,7 +10,6 @@ use App\Models\TripPassenger;
 use App\Models\TripStop;
 use App\Models\User;
 use App\Models\UserDevice;
-use App\Models\Zone;
 use App\Services\Checkout\CheckoutService;
 use App\Services\Push\FcmGateway;
 use App\Services\Routing\Contracts\RoutingGateway;
@@ -21,10 +20,11 @@ use Clickbar\Magellan\Database\PostgisFunctions\ST;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 
 /**
- * Finds an ongoing ride-share trip a new request can merge into, and attaches the
- * requesting customer to it as an extra passenger.
+ * Finds an ongoing ride-share trip a new request can merge into and offers the requesting
+ * customer to its driver, who must accept before the passenger joins the route.
  *
  * Matching runs three checks, cheapest first, against each nearby ongoing ride-share trip:
  *   1. direction   - bearing pre-filter, no routing call (cheap, rejects most bad candidates)
@@ -49,43 +49,282 @@ readonly class RideShareMatchingService
         private FcmGateway $pushGateway,
     ) {}
 
-    public function match(
-        User $customer,
-        Point $pickup,
-        ?string $pickupAddress,
-        Point $dropoff,
-        ?string $dropoffAddress,
-        int $vehicleTypeId,
-        int $seatsRequested,
-        Zone $zone,
-        PricingRule $pricingRule,
-        string $paymentMethod,
-    ): ?TripPassenger {
-        $best = null;
+    /**
+     * Offers the request to the best-fitting ongoing ride-share trip (smallest detour) that
+     * still has the seats, holding those seats while the driver decides. The passenger is
+     * created -- or, on a re-offer, moved onto the trip -- as 'pending_approval', with their
+     * pickup/dropoff stops unsequenced: they only join the route once the driver accepts.
+     * Null when no ongoing trip fits.
+     */
+    public function offer(RideShareRequest $request, PricingRule $pricingRule, ?TripPassenger $passenger = null): ?TripPassenger
+    {
+        $excludeTripIds = $passenger->declined_trip_ids ?? [];
+        $candidates = [];
 
-        foreach ($this->shortlistCandidates($pickup, $vehicleTypeId, $seatsRequested) as $trip) {
-            $evaluation = $this->evaluateCandidate($trip, $pickup, $dropoff, $seatsRequested);
+        foreach ($this->shortlistCandidates($request->pickup, $request->vehicleTypeId, $request->seatsRequested, $excludeTripIds) as $trip) {
+            $evaluation = $this->evaluateCandidate($trip, $request->pickup, $request->dropoff, $request->seatsRequested);
 
-            if ($evaluation === null) {
-                continue;
-            }
-
-            if ($best === null || $evaluation['detour_minutes'] < $best['detour_minutes']) {
-                $best = [...$evaluation, 'trip' => $trip];
+            if ($evaluation !== null) {
+                $candidates[] = [...$evaluation, 'trip' => $trip];
             }
         }
 
-        if ($best === null) {
-            return null;
+        usort($candidates, fn (array $a, array $b): int => $a['detour_minutes'] <=> $b['detour_minutes']);
+
+        foreach ($candidates as $candidate) {
+            // Atomic claim, same pattern as the solo-ride driver-accept claim: if another
+            // request already took the seats since we evaluated this candidate, move on to
+            // the next one rather than over-filling the vehicle.
+            $claimed = Trip::query()
+                ->where('id', $candidate['trip']->id)
+                ->where('status', 'in_progress')
+                ->where('available_seats', '>=', $request->seatsRequested)
+                ->decrement('available_seats', $request->seatsRequested);
+
+            if ($claimed > 0) {
+                return $this->createOffer($request, $pricingRule, $passenger, $candidate);
+            }
         }
 
-        return $this->attach($customer, $pickup, $pickupAddress, $dropoff, $dropoffAddress, $seatsRequested, $zone, $pricingRule, $paymentMethod, $best);
+        return null;
     }
 
     /**
+     * The driver accepts a passenger waiting on their approval: the passenger's stops are
+     * slotted into the trip's current remaining route (re-planned now, since the route may
+     * have changed while the request waited) and the passenger becomes 'matched', with
+     * matched_at as the time of acceptance. Detour/direction limits aren't re-applied --
+     * the driver has explicitly agreed to the pickup. Null when the trip can no longer
+     * take the passenger (no longer in progress, or no capacity at any insertion point);
+     * the caller then releases and re-offers the request.
+     */
+    public function accept(TripPassenger $passenger): ?TripPassenger
+    {
+        $accepted = DB::transaction(function () use ($passenger): ?TripPassenger {
+            $passenger = TripPassenger::query()->lockForUpdate()->with(['stops', 'fareBreakdown'])->findOrFail($passenger->id);
+
+            if ($passenger->status !== 'pending_approval' || $this->isReleased($passenger)) {
+                throw ValidationException::withMessages([
+                    'status' => 'This passenger is no longer waiting for your approval.',
+                ]);
+            }
+
+            if ($passenger->request_expires_at?->isPast()) {
+                throw ValidationException::withMessages([
+                    'status' => 'This request has expired.',
+                ]);
+            }
+
+            $trip = Trip::query()
+                ->lockForUpdate()
+                ->with([
+                    'zone',
+                    'rider.riderProfile',
+                    'vehicleType',
+                    'stops' => fn ($query) => $query->whereNull('arrived_at'),
+                ])
+                ->findOrFail($passenger->trip_id);
+
+            $pickupStop = $passenger->stops->firstWhere('stop_type', 'pickup');
+            $dropoffStop = $passenger->stops->firstWhere('stop_type', 'dropoff');
+
+            if ($trip->status !== 'in_progress' || $trip->rider?->riderProfile?->current_location === null || $pickupStop === null || $dropoffStop === null) {
+                return null;
+            }
+
+            $evaluation = $this->evaluateCandidate(
+                $trip,
+                $pickupStop->location,
+                $dropoffStop->location,
+                $passenger->seats_requested,
+                heldSeats: $passenger->seats_requested,
+                enforceLimits: false,
+            );
+
+            if ($evaluation === null) {
+                return null;
+            }
+
+            $trip->increment('passenger_count', 1, [
+                'route_polyline' => $evaluation['route']->polyline,
+                'route_distance_km' => $evaluation['route']->distanceKm,
+                'route_duration_minutes' => $evaluation['route']->durationMinutes,
+            ]);
+
+            $passengerLeg = $evaluation['route']->legs[$evaluation['gap'] + 1] ?? ['distance_km' => 0.0, 'duration_minutes' => 0];
+            $pricingRule = $this->checkout->findPricingRule((int) $trip->zone_id, (int) $trip->vehicle_type_id);
+
+            // Re-priced on the passenger's leg of the re-planned route; if the pricing rule
+            // has since been removed, the estimate recorded at offer time stands.
+            if ($pricingRule !== null && $trip->zone !== null) {
+                $fare = $this->checkout->calculateRideShareFare(
+                    $pricingRule,
+                    $trip->zone,
+                    (int) $trip->vehicle_type_id,
+                    (float) $passengerLeg['distance_km'],
+                    (int) $passengerLeg['duration_minutes'],
+                    now(),
+                );
+
+                $passenger->fareBreakdown?->update($this->estimateFields($fare));
+            }
+
+            $passenger->update([
+                'status' => 'matched',
+                'matched_at' => now(),
+                'distance_km' => $passengerLeg['distance_km'],
+                'duration_minutes' => $passengerLeg['duration_minutes'],
+            ]);
+
+            $this->insertStopsAtGap($trip, $pickupStop, $dropoffStop, $evaluation['gap'], $evaluation['remaining_stops']);
+
+            return $passenger;
+        });
+
+        if ($accepted !== null) {
+            $this->notifyCustomerOfMatch($accepted->trip, $accepted->customer);
+        }
+
+        return $accepted;
+    }
+
+    /**
+     * Ends the passenger's current offer (driver declined, it expired, or the customer
+     * cancelled): returns the held seats to the trip and adds it to declined_trip_ids so a
+     * re-offer never goes back to it. False when the offer was already released -- e.g.
+     * the driver declined just as it expired -- so the caller doesn't re-offer it twice.
+     */
+    public function release(TripPassenger $passenger): bool
+    {
+        return DB::transaction(function () use ($passenger): bool {
+            $passenger = TripPassenger::query()->lockForUpdate()->findOrFail($passenger->id);
+
+            if ($passenger->status !== 'pending_approval' || $this->isReleased($passenger)) {
+                return false;
+            }
+
+            $passenger->update([
+                'declined_trip_ids' => [...($passenger->declined_trip_ids ?? []), (int) $passenger->trip_id],
+                'request_expires_at' => null,
+            ]);
+
+            Trip::query()->where('id', $passenger->trip_id)->increment('available_seats', $passenger->seats_requested);
+
+            return true;
+        });
+    }
+
+    /**
+     * A pending passenger whose current trip is already in declined_trip_ids has been
+     * released from it and is waiting to be re-offered.
+     */
+    private function isReleased(TripPassenger $passenger): bool
+    {
+        return in_array((int) $passenger->trip_id, $passenger->declined_trip_ids ?? [], true);
+    }
+
+    /**
+     * @param  array{gap: int, route: RouteResult, detour_minutes: int, detour_km: float, remaining_stops: Collection<int, TripStop>, driver_location: Point, trip: Trip}  $candidate
+     */
+    private function createOffer(RideShareRequest $request, PricingRule $pricingRule, ?TripPassenger $passenger, array $candidate): TripPassenger
+    {
+        $trip = $candidate['trip'];
+        $passengerLeg = $candidate['route']->legs[$candidate['gap'] + 1] ?? ['distance_km' => 0.0, 'duration_minutes' => 0];
+
+        $fare = $this->checkout->calculateRideShareFare(
+            $pricingRule,
+            $request->zone,
+            $request->vehicleTypeId,
+            (float) $passengerLeg['distance_km'],
+            (int) $passengerLeg['duration_minutes'],
+            now(),
+        );
+
+        $passenger = DB::transaction(function () use ($request, $passenger, $trip, $passengerLeg, $fare, $candidate): TripPassenger {
+            $passengerFields = [
+                'trip_id' => $trip->id,
+                'status' => 'pending_approval',
+                'distance_km' => $passengerLeg['distance_km'],
+                'duration_minutes' => $passengerLeg['duration_minutes'],
+                'detour_minutes' => max(0, (int) round($candidate['detour_minutes'])),
+                'detour_km' => max(0.0, round($candidate['detour_km'], 2)),
+                'request_expires_at' => now()->addSeconds((int) Configuration::get('ride_share_join_request_timeout_seconds', 30)),
+            ];
+
+            if ($passenger === null) {
+                $passenger = TripPassenger::query()->create([
+                    ...$passengerFields,
+                    'customer_id' => $request->customer->id,
+                    'seats_requested' => $request->seatsRequested,
+                    'requested_at' => now(),
+                ]);
+
+                // Recorded but not on the route (no sequence) until the driver accepts.
+                TripStop::query()->create([
+                    'trip_id' => $trip->id,
+                    'trip_passenger_id' => $passenger->id,
+                    'stop_type' => 'pickup',
+                    'seats_delta' => $request->seatsRequested,
+                    'location' => $request->pickup,
+                    'address' => $request->pickupAddress,
+                ]);
+
+                TripStop::query()->create([
+                    'trip_id' => $trip->id,
+                    'trip_passenger_id' => $passenger->id,
+                    'stop_type' => 'dropoff',
+                    'seats_delta' => -$request->seatsRequested,
+                    'location' => $request->dropoff,
+                    'address' => $request->dropoffAddress,
+                ]);
+            } else {
+                $passenger->update($passengerFields);
+                TripStop::query()->where('trip_passenger_id', $passenger->id)->update(['trip_id' => $trip->id, 'sequence' => null]);
+            }
+
+            TripFareBreakdown::query()->updateOrCreate(
+                ['passenger_id' => $passenger->id],
+                [
+                    'trip_id' => $trip->id,
+                    'customer_id' => $request->customer->id,
+                    ...$this->estimateFields($fare),
+                    'currency_code' => $request->zone->currency_code,
+                    'payment_method' => $request->paymentMethod,
+                    'payment_status' => 'pending',
+                ],
+            );
+
+            return $passenger;
+        });
+
+        $this->notifyDriverOfJoinRequest($trip, $passenger, $request, $this->checkout->roundFare($fare['fare']));
+
+        return $passenger;
+    }
+
+    /**
+     * @param  array{base_fare: float, distance_fare: float, time_fare: float, surge_multiplier: float, surge_amount: float, discount_percentage: float, fare: float}  $fare
+     * @return array<string, float>
+     */
+    private function estimateFields(array $fare): array
+    {
+        return [
+            'base_fare' => $fare['base_fare'],
+            'distance_fare' => $fare['distance_fare'],
+            'time_fare' => $fare['time_fare'],
+            'surge_multiplier' => $fare['surge_multiplier'],
+            'surge_amount' => $fare['surge_amount'],
+            'discount_percentage' => $fare['discount_percentage'],
+            'estimated_fare' => $this->checkout->roundFare($fare['fare']),
+            'estimated_fare_before_rounding' => $fare['fare'],
+        ];
+    }
+
+    /**
+     * @param  list<int>  $excludeTripIds
      * @return Collection<int, Trip>
      */
-    private function shortlistCandidates(Point $pickup, int $vehicleTypeId, int $seatsRequested): Collection
+    private function shortlistCandidates(Point $pickup, int $vehicleTypeId, int $seatsRequested, array $excludeTripIds): Collection
     {
         $radiusMeters = (float) Configuration::get('ride_share_candidate_search_radius_km', 5) * 1000;
         $maxCandidates = (int) Configuration::get('ride_share_max_candidates', 5);
@@ -95,6 +334,7 @@ readonly class RideShareMatchingService
             ->where('status', 'in_progress')
             ->where('vehicle_type_id', $vehicleTypeId)
             ->where('available_seats', '>=', $seatsRequested)
+            ->when($excludeTripIds !== [], fn ($query) => $query->whereNotIn('id', $excludeTripIds))
             ->whereHas('rider.riderProfile', function ($query) use ($pickup, $radiusMeters) {
                 $query->whereNotNull('current_location')
                     ->where(ST::distanceSphere('current_location', $pickup), '<=', $radiusMeters);
@@ -113,9 +353,13 @@ readonly class RideShareMatchingService
     }
 
     /**
+     * $heldSeats: seats this same request already holds on the trip (taken off
+     * available_seats when it was offered), so they aren't counted against it twice.
+     * $enforceLimits: false once the driver has accepted -- only capacity still applies.
+     *
      * @return array{gap: int, route: RouteResult, detour_minutes: int, detour_km: float, remaining_stops: Collection<int, TripStop>, driver_location: Point}|null
      */
-    private function evaluateCandidate(Trip $trip, Point $pickup, Point $dropoff, int $seatsRequested): ?array
+    private function evaluateCandidate(Trip $trip, Point $pickup, Point $dropoff, int $seatsRequested, int $heldSeats = 0, bool $enforceLimits = true): ?array
     {
         $remainingStops = $trip->stops;
 
@@ -127,12 +371,12 @@ readonly class RideShareMatchingService
 
         $driverLocation = $trip->rider->riderProfile->current_location;
 
-        if (! $this->passesDirectionCheck($driverLocation, $remainingStops->last()->location, $pickup)) {
+        if ($enforceLimits && ! $this->passesDirectionCheck($driverLocation, $remainingStops->last()->location, $pickup)) {
             return null;
         }
 
         $capacity = (int) ($trip->vehicleType->capacity ?? 0);
-        $occupiedNow = $capacity - (int) $trip->available_seats;
+        $occupiedNow = $capacity - (int) $trip->available_seats - $heldSeats;
         $occupancyAtGap = $this->occupancyPrefix($remainingStops, $occupiedNow);
 
         $baseline = $this->routing->computeRoute([
@@ -163,7 +407,7 @@ readonly class RideShareMatchingService
             $detourMinutes = $trial->durationMinutes - $baseline->durationMinutes;
             $detourKm = $trial->distanceKm - $baseline->distanceKm;
 
-            if ($detourMinutes > $maxDetourMinutes || $detourKm > $maxDetourKm) {
+            if ($enforceLimits && ($detourMinutes > $maxDetourMinutes || $detourKm > $maxDetourKm)) {
                 continue;
             }
 
@@ -216,104 +460,13 @@ readonly class RideShareMatchingService
     }
 
     /**
-     * @param  array{gap: int, route: RouteResult, detour_minutes: float, detour_km: float, remaining_stops: Collection<int, TripStop>, driver_location: Point, trip: Trip}  $winner
-     */
-    private function attach(
-        User $customer,
-        Point $pickup,
-        ?string $pickupAddress,
-        Point $dropoff,
-        ?string $dropoffAddress,
-        int $seatsRequested,
-        Zone $zone,
-        PricingRule $pricingRule,
-        string $paymentMethod,
-        array $winner,
-    ): ?TripPassenger {
-        /** @var Trip $trip */
-        $trip = $winner['trip'];
-
-        // Atomic claim, same pattern as the solo-ride driver-accept claim: if another
-        // request already consumed the seats since we evaluated this candidate, this
-        // affects 0 rows and we report "no match" rather than retrying a stale plan
-        // against a second-best candidate.
-        $claimed = Trip::query()
-            ->where('id', $trip->id)
-            ->where('available_seats', '>=', $seatsRequested)
-            ->decrement('available_seats', $seatsRequested, [
-                'passenger_count' => DB::raw('passenger_count + 1'),
-                'route_polyline' => $winner['route']->polyline,
-                'route_distance_km' => $winner['route']->distanceKm,
-                'route_duration_minutes' => $winner['route']->durationMinutes,
-            ]);
-
-        if ($claimed === 0) {
-            return null;
-        }
-
-        $passengerLeg = $winner['route']->legs[$winner['gap'] + 1] ?? ['distance_km' => 0.0, 'duration_minutes' => 0];
-
-        $fare = $this->checkout->calculateRideShareFare(
-            $pricingRule,
-            $zone,
-            (int) $trip->vehicle_type_id,
-            (float) $passengerLeg['distance_km'],
-            (int) $passengerLeg['duration_minutes'],
-            now(),
-        );
-
-        return DB::transaction(function () use ($trip, $customer, $pickup, $pickupAddress, $dropoff, $dropoffAddress, $seatsRequested, $zone, $passengerLeg, $fare, $paymentMethod, $winner) {
-            $passenger = TripPassenger::query()->create([
-                'trip_id' => $trip->id,
-                'customer_id' => $customer->id,
-                'seats_requested' => $seatsRequested,
-                'status' => 'matched',
-                'distance_km' => $passengerLeg['distance_km'],
-                'duration_minutes' => $passengerLeg['duration_minutes'],
-                'requested_at' => now(),
-                'matched_at' => now(),
-            ]);
-
-            TripFareBreakdown::query()->create([
-                'trip_id' => $trip->id,
-                'passenger_id' => $passenger->id,
-                'customer_id' => $customer->id,
-                'base_fare' => $fare['base_fare'],
-                'distance_fare' => $fare['distance_fare'],
-                'time_fare' => $fare['time_fare'],
-                'surge_multiplier' => $fare['surge_multiplier'],
-                'surge_amount' => $fare['surge_amount'],
-                'discount_percentage' => $fare['discount_percentage'],
-                'estimated_fare' => $this->checkout->roundFare($fare['fare']),
-                'estimated_fare_before_rounding' => $fare['fare'],
-                'currency_code' => $zone->currency_code,
-                'payment_method' => $paymentMethod,
-                'payment_status' => 'pending',
-            ]);
-
-            $this->insertStopsAtGap($trip, $passenger, $winner['gap'], $winner['remaining_stops'], $pickup, $pickupAddress, $dropoff, $dropoffAddress, $seatsRequested);
-
-            $this->notifyDriverOfNewPassenger($trip, $passenger);
-            $this->notifyCustomerOfMatch($trip, $customer);
-
-            return $passenger;
-        });
-    }
-
-    /**
+     * Gives the accepted passenger's (until now unsequenced) pickup/dropoff stops their
+     * place on the route, at the chosen gap, renumbering the remaining stops around them.
+     *
      * @param  Collection<int, TripStop>  $remainingStops
      */
-    private function insertStopsAtGap(
-        Trip $trip,
-        TripPassenger $passenger,
-        int $gap,
-        Collection $remainingStops,
-        Point $pickup,
-        ?string $pickupAddress,
-        Point $dropoff,
-        ?string $dropoffAddress,
-        int $seatsRequested,
-    ): void {
+    private function insertStopsAtGap(Trip $trip, TripStop $pickupStop, TripStop $dropoffStop, int $gap, Collection $remainingStops): void
+    {
         $arrivedCount = TripStop::query()->where('trip_id', $trip->id)->whereNotNull('arrived_at')->count();
 
         $before = $remainingStops->slice(0, $gap)->values();
@@ -333,32 +486,15 @@ readonly class RideShareMatchingService
             $stop->update(['sequence' => $sequence++]);
         }
 
-        TripStop::query()->create([
-            'trip_id' => $trip->id,
-            'trip_passenger_id' => $passenger->id,
-            'stop_type' => 'pickup',
-            'seats_delta' => $seatsRequested,
-            'sequence' => $sequence++,
-            'location' => $pickup,
-            'address' => $pickupAddress,
-        ]);
-
-        TripStop::query()->create([
-            'trip_id' => $trip->id,
-            'trip_passenger_id' => $passenger->id,
-            'stop_type' => 'dropoff',
-            'seats_delta' => -$seatsRequested,
-            'sequence' => $sequence++,
-            'location' => $dropoff,
-            'address' => $dropoffAddress,
-        ]);
+        $pickupStop->update(['sequence' => $sequence++]);
+        $dropoffStop->update(['sequence' => $sequence++]);
 
         foreach ($after as $stop) {
             $stop->update(['sequence' => $sequence++]);
         }
     }
 
-    private function notifyDriverOfNewPassenger(Trip $trip, TripPassenger $passenger): void
+    private function notifyDriverOfJoinRequest(Trip $trip, TripPassenger $passenger, RideShareRequest $request, float $estimatedFare): void
     {
         $driver = $trip->rider;
 
@@ -376,11 +512,19 @@ readonly class RideShareMatchingService
         try {
             $this->pushGateway->sendToTokens(
                 array_values($tokens),
-                'New passenger added to your route',
-                'A new passenger has joined your ride-share trip. Your route has been updated.',
+                'New ride-share request',
+                'A passenger wants to join your ride-share trip. Accept or decline before the request expires.',
                 [
+                    'type' => 'ride_share_join_request',
                     'trip_id' => (string) $trip->id,
                     'trip_passenger_id' => (string) $passenger->id,
+                    'seats_requested' => (string) $request->seatsRequested,
+                    'pickup_address' => (string) $request->pickupAddress,
+                    'dropoff_address' => (string) $request->dropoffAddress,
+                    'detour_minutes' => (string) $passenger->detour_minutes,
+                    'estimated_fare' => (string) $estimatedFare,
+                    'currency_code' => $request->zone->currency_code,
+                    'expires_at' => (string) $passenger->request_expires_at?->toIso8601String(),
                 ],
             );
         } catch (\Throwable $e) {
@@ -401,7 +545,7 @@ readonly class RideShareMatchingService
             $this->pushGateway->sendToTokens(
                 array_values($tokens),
                 'You have been matched',
-                'You have joined an ongoing ride-share trip. Your driver is on the way.',
+                'Your driver accepted your ride-share request and is on the way.',
                 [
                     'trip_id' => (string) $trip->id,
                     'status' => 'matched',

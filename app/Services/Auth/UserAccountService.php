@@ -62,7 +62,7 @@ class UserAccountService
             ->all();
 
         $activeStatuses = ['requested', 'searching', 'accepted', 'arrived', 'in_progress'];
-        $activePassengerStatuses = ['requested', 'matched', 'arrived_pickup', 'picked_up', 'arrived_dropoff'];
+        $activePassengerStatuses = ['requested', 'pending_approval', 'matched', 'arrived_pickup', 'picked_up', 'arrived_dropoff'];
 
         $userIdsWithActiveTripsAsRider = Trip::query()
             ->whereIn('rider_id', $userIds)
@@ -152,7 +152,7 @@ class UserAccountService
      */
     private function hasActiveTripAsCustomer(int $userId): bool
     {
-        $activePassengerStatuses = ['requested', 'matched', 'arrived_pickup', 'picked_up', 'arrived_dropoff'];
+        $activePassengerStatuses = ['requested', 'pending_approval', 'matched', 'arrived_pickup', 'picked_up', 'arrived_dropoff'];
 
         return TripPassenger::query()->where('customer_id', $userId)->whereIn('status', $activePassengerStatuses)->exists()
             || DeliveryDetails::query()->where('sender_id', $userId)->whereIn('status', $activePassengerStatuses)->exists();

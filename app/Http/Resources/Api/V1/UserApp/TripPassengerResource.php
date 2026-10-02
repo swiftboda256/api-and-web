@@ -40,7 +40,8 @@ class TripPassengerResource extends JsonResource
             'arrived_at' => $trip->arrived_at,
             'started_at' => $trip->started_at,
             'completed_at' => $trip->completed_at,
-            'rider' => $trip->relationLoaded('rider') && $trip->rider ? [
+            // Not shown while the passenger waits on the driver's approval.
+            'rider' => $this->status !== 'pending_approval' && $trip->relationLoaded('rider') && $trip->rider ? [
                 'name' => $trip->rider->name,
                 'rider_ref' => $trip->rider->riderProfile?->rider_ref,
                 'gender' => $trip->rider->riderProfile?->gender,

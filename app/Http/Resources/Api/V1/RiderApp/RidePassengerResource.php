@@ -42,6 +42,11 @@ class RidePassengerResource extends JsonResource
                 'address' => $dropoffStop->address,
                 'arrived_at' => $dropoffStop->arrived_at,
             ] : null,
+            // Ride-share join request details, set when the passenger is offered to this
+            // trip's driver ('pending_approval'): accept/decline before request_expires_at.
+            'detour_minutes' => $this->detour_minutes,
+            'detour_km' => $this->detour_km,
+            'request_expires_at' => $this->request_expires_at,
             'distance_km' => $this->distance_km,
             'duration_minutes' => $this->duration_minutes,
             'estimated_fare' => $fareBreakdown?->estimated_fare,

@@ -425,95 +425,152 @@ readonly class TripService
      */
     private function bookRideShare(User $user, array $data, Point $pickup, Point $dropoff, Zone $zone, PricingRule $pricingRule, CarbonImmutable $requestedAt): TripPassenger
     {
-        $seatsRequested = (int) ($data['seats_requested'] ?? 1);
-
         // Ride-share is instant-only -- there's no scheduling endpoint for it (see
         // ScheduleTripRequest, which only allows type in:ride,delivery), so there's always an
         // ongoing trip to potentially merge into.
-        $matched = $this->rideShareMatching->match(
-            $user,
-            $pickup,
-            $data['pickup_address'] ?? null,
-            $dropoff,
-            $data['dropoff_address'] ?? null,
-            (int) $data['vehicle_type_id'],
-            $seatsRequested,
-            $zone,
-            $pricingRule,
-            $data['payment_method'],
+        $request = new RideShareRequest(
+            customer: $user,
+            zone: $zone,
+            vehicleTypeId: (int) $data['vehicle_type_id'],
+            pickup: $pickup,
+            pickupAddress: $data['pickup_address'] ?? null,
+            dropoff: $dropoff,
+            dropoffAddress: $data['dropoff_address'] ?? null,
+            seatsRequested: (int) ($data['seats_requested'] ?? 1),
+            requestedDistanceKm: (float) $data['distance_km'],
+            paymentMethod: $data['payment_method'],
         );
 
-        if ($matched !== null) {
-            return $matched->load(['customer', 'fareBreakdown', 'trip.rider.riderProfile', 'trip.vehicleType', 'stops']);
+        // Offered to the best-fitting ongoing trip's driver, who has to accept it -- the
+        // passenger comes back 'pending_approval' until they do.
+        $offered = $this->rideShareMatching->offer($request, $pricingRule);
+
+        if ($offered !== null) {
+            return $offered->load(['customer', 'fareBreakdown', 'trip.rider.riderProfile', 'trip.vehicleType', 'stops']);
         }
 
-        // No compatible ongoing trip: start a brand-new ride-share trip, seeded by this
-        // first passenger. It's dispatched to nearby idle drivers exactly like a solo ride
-        // (reusing dispatchToNearbyRiders/RiderTripService::accept unchanged) -- as further
-        // passengers join mid-route, they attach via RideShareMatchingService instead.
-        $distanceKm = (float) $data['distance_km'];
-        $durationMinutes = $this->checkout->durationMinutes($distanceKm);
-        $fare = $this->checkout->calculateRideShareFare($pricingRule, $zone, (int) $data['vehicle_type_id'], $distanceKm, $durationMinutes, $requestedAt);
-        $capacity = (int) VehicleType::query()->findOrFail((int) $data['vehicle_type_id'])->capacity;
+        return $this->startRideShareTrip($request, $pricingRule, null, $requestedAt)
+            ->load(['customer', 'fareBreakdown', 'trip.vehicleType', 'stops']);
+    }
 
-        [$trip, $passenger] = DB::transaction(function () use ($user, $data, $zone, $pickup, $dropoff, $distanceKm, $durationMinutes, $fare, $capacity, $seatsRequested, $requestedAt): array {
+    /**
+     * Re-offers a ride-share passenger after the driver they were offered to declined,
+     * didn't respond in time, or could no longer fit them: first to the next-best ongoing
+     * trip (never one in their declined_trip_ids), otherwise onto a brand-new ride-share
+     * trip dispatched to idle drivers.
+     */
+    public function reofferRideShareRequest(TripPassenger $passenger): void
+    {
+        $passenger->refresh()->load(['customer', 'fareBreakdown', 'stops', 'trip.zone']);
+
+        // The customer cancelled in the meantime -- nothing left to place.
+        if ($passenger->status !== 'pending_approval') {
+            return;
+        }
+
+        $request = RideShareRequest::fromPassenger($passenger);
+        $pricingRule = $this->checkout->findPricingRule($request->zone->id, $request->vehicleTypeId);
+
+        if ($pricingRule === null) {
+            Log::error('ride_share.reoffer_no_pricing_rule', ['trip_passenger_id' => $passenger->id]);
+
+            return;
+        }
+
+        if ($this->rideShareMatching->offer($request, $pricingRule, $passenger) !== null) {
+            return;
+        }
+
+        $this->startRideShareTrip($request, $pricingRule, $passenger, now()->toImmutable());
+    }
+
+    /**
+     * No ongoing trip took the request: start a brand-new ride-share trip seeded by this
+     * passenger -- a new one, or one moved off a trip whose driver didn't accept them. It's
+     * dispatched to nearby idle drivers exactly like a solo ride (reusing
+     * dispatchToNearbyRiders/RiderTripService::accept unchanged); further passengers then
+     * join it mid-route through RideShareMatchingService.
+     */
+    private function startRideShareTrip(RideShareRequest $request, PricingRule $pricingRule, ?TripPassenger $passenger, CarbonImmutable $requestedAt): TripPassenger
+    {
+        $distanceKm = $request->requestedDistanceKm;
+        $durationMinutes = $this->checkout->durationMinutes($distanceKm);
+        $fare = $this->checkout->calculateRideShareFare($pricingRule, $request->zone, $request->vehicleTypeId, $distanceKm, $durationMinutes, $requestedAt);
+        $capacity = (int) VehicleType::query()->findOrFail($request->vehicleTypeId)->capacity;
+
+        [$trip, $passenger] = DB::transaction(function () use ($request, $passenger, $distanceKm, $durationMinutes, $fare, $capacity, $requestedAt): array {
             $trip = Trip::query()->create([
                 'trip_number' => $this->generateTripNumber(),
-                'vehicle_type_id' => $data['vehicle_type_id'],
-                'zone_id' => $zone->id,
+                'vehicle_type_id' => $request->vehicleTypeId,
+                'zone_id' => $request->zone->id,
                 'type' => 'ride_share',
                 'status' => 'requested',
-                'available_seats' => max($capacity - $seatsRequested, 0),
+                'available_seats' => max($capacity - $request->seatsRequested, 0),
                 'passenger_count' => 1,
                 'requested_at' => $requestedAt,
             ]);
 
-            $passenger = TripPassenger::query()->create([
+            $passengerFields = [
                 'trip_id' => $trip->id,
-                'customer_id' => $user->id,
-                'seats_requested' => $seatsRequested,
                 'status' => 'requested',
                 'distance_km' => $distanceKm,
                 'duration_minutes' => $durationMinutes,
-                'requested_at' => $requestedAt,
-            ]);
+            ];
 
-            TripFareBreakdown::query()->create([
-                'trip_id' => $trip->id,
-                'passenger_id' => $passenger->id,
-                'customer_id' => $user->id,
-                'base_fare' => $fare['base_fare'],
-                'distance_fare' => $fare['distance_fare'],
-                'time_fare' => $fare['time_fare'],
-                'surge_multiplier' => $fare['surge_multiplier'],
-                'surge_amount' => $fare['surge_amount'],
-                'discount_percentage' => $fare['discount_percentage'],
-                'estimated_fare' => $this->checkout->roundFare($fare['fare']),
-                'estimated_fare_before_rounding' => $fare['fare'],
-                'currency_code' => $zone->currency_code,
-                'payment_method' => $data['payment_method'],
-                'payment_status' => 'pending',
-            ]);
+            if ($passenger === null) {
+                $passenger = TripPassenger::query()->create([
+                    ...$passengerFields,
+                    'customer_id' => $request->customer->id,
+                    'seats_requested' => $request->seatsRequested,
+                    'requested_at' => $requestedAt,
+                ]);
 
-            TripStop::query()->create([
-                'trip_id' => $trip->id,
-                'trip_passenger_id' => $passenger->id,
-                'stop_type' => 'pickup',
-                'seats_delta' => $seatsRequested,
-                'sequence' => 1,
-                'location' => $pickup,
-                'address' => $data['pickup_address'] ?? null,
-            ]);
+                TripStop::query()->create([
+                    'trip_id' => $trip->id,
+                    'trip_passenger_id' => $passenger->id,
+                    'stop_type' => 'pickup',
+                    'seats_delta' => $request->seatsRequested,
+                    'sequence' => 1,
+                    'location' => $request->pickup,
+                    'address' => $request->pickupAddress,
+                ]);
 
-            TripStop::query()->create([
-                'trip_id' => $trip->id,
-                'trip_passenger_id' => $passenger->id,
-                'stop_type' => 'dropoff',
-                'seats_delta' => -$seatsRequested,
-                'sequence' => 2,
-                'location' => $dropoff,
-                'address' => $data['dropoff_address'] ?? null,
-            ]);
+                TripStop::query()->create([
+                    'trip_id' => $trip->id,
+                    'trip_passenger_id' => $passenger->id,
+                    'stop_type' => 'dropoff',
+                    'seats_delta' => -$request->seatsRequested,
+                    'sequence' => 2,
+                    'location' => $request->dropoff,
+                    'address' => $request->dropoffAddress,
+                ]);
+            } else {
+                // A passenger no ongoing trip's driver accepted: their offer details no
+                // longer apply, and their (unsequenced) stops become this trip's route.
+                $passenger->update([...$passengerFields, 'detour_minutes' => null, 'detour_km' => null, 'request_expires_at' => null]);
+
+                TripStop::query()->where('trip_passenger_id', $passenger->id)->where('stop_type', 'pickup')->update(['trip_id' => $trip->id, 'sequence' => 1]);
+                TripStop::query()->where('trip_passenger_id', $passenger->id)->where('stop_type', 'dropoff')->update(['trip_id' => $trip->id, 'sequence' => 2]);
+            }
+
+            TripFareBreakdown::query()->updateOrCreate(
+                ['passenger_id' => $passenger->id],
+                [
+                    'trip_id' => $trip->id,
+                    'customer_id' => $request->customer->id,
+                    'base_fare' => $fare['base_fare'],
+                    'distance_fare' => $fare['distance_fare'],
+                    'time_fare' => $fare['time_fare'],
+                    'surge_multiplier' => $fare['surge_multiplier'],
+                    'surge_amount' => $fare['surge_amount'],
+                    'discount_percentage' => $fare['discount_percentage'],
+                    'estimated_fare' => $this->checkout->roundFare($fare['fare']),
+                    'estimated_fare_before_rounding' => $fare['fare'],
+                    'currency_code' => $request->zone->currency_code,
+                    'payment_method' => $request->paymentMethod,
+                    'payment_status' => 'pending',
+                ],
+            );
 
             return [$trip, $passenger];
         });
@@ -521,7 +578,7 @@ readonly class TripService
         $trip->update(['status' => 'searching']);
 
         try {
-            $this->dispatchToNearbyRiders($trip, $pickup, (int) $data['vehicle_type_id'], $data['pickup_address'] ?? null, $this->checkout->roundFare($fare['fare']), $zone->currency_code);
+            $this->dispatchToNearbyRiders($trip, $request->pickup, $request->vehicleTypeId, $request->pickupAddress, $this->checkout->roundFare($fare['fare']), $request->zone->currency_code);
         } catch (Throwable $e) {
             Log::error('trip.dispatch_failed', [
                 'trip_id' => $trip->id,
@@ -529,7 +586,7 @@ readonly class TripService
             ]);
         }
 
-        return $passenger->load(['customer', 'fareBreakdown', 'trip.vehicleType', 'stops']);
+        return $passenger;
     }
 
     /**
@@ -782,6 +839,25 @@ readonly class TripService
             ]);
         }
 
+        // Still waiting on a driver: withdraw the offer (returning its held seats) and drop
+        // the passenger's unsequenced stops -- they never joined the route, so there are no
+        // route or passenger-count changes to undo.
+        if ($passenger->status === 'pending_approval') {
+            $this->rideShareMatching->release($passenger);
+            $passenger->stops()->delete();
+
+            $passenger->update([
+                'status' => 'cancelled',
+                'cancelled_at' => now(),
+                'cancelled_by' => $user->id,
+                'cancellation_reason_id' => $cancellationReasonId,
+            ]);
+
+            $this->notifyRiderOfCustomerCancellation($passenger);
+
+            return $passenger->refresh()->load(['trip', 'stops']);
+        }
+
         DB::transaction(function () use ($passenger, $user, $cancellationReasonId): void {
             $trip = $passenger->trip;
 
@@ -977,7 +1053,7 @@ readonly class TripService
             : DeliveryDetails::query()->where('trip_id', $trip->id)->oldest('requested_at')->first();
 
         $pickupStop = $isRide
-            ? TripStop::query()->where('trip_id', $trip->id)->where('stop_type', 'pickup')->orderBy('sequence')->first()
+            ? TripStop::query()->where('trip_id', $trip->id)->where('stop_type', 'pickup')->whereNotNull('sequence')->orderBy('sequence')->first()
             : DeliveryStop::query()->where('trip_id', $trip->id)->where('stop_type', 'pickup')->orderBy('sequence')->first();
 
         if ($item === null || $pickupStop?->location === null) {

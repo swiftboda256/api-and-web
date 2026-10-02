@@ -151,11 +151,14 @@ class Trip extends BaseModel
     }
 
     /**
+     * The vehicle's route. Excludes stops with no sequence -- those belong to a ride-share
+     * passenger still waiting on the driver's approval, and aren't on the route yet.
+     *
      * @return HasMany<TripStop, $this>
      */
     public function stops(): HasMany
     {
-        return $this->hasMany(TripStop::class)->orderBy('sequence');
+        return $this->hasMany(TripStop::class)->whereNotNull('sequence')->orderBy('sequence');
     }
 
     /**
