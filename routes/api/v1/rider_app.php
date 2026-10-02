@@ -59,6 +59,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('{trip}/deliveries/{delivery}/pickup', [RideController::class, 'pickUpDelivery'])->name('deliveries.pickup')->whereNumber(['trip', 'delivery']);
         Route::patch('{trip}/deliveries/{delivery}/dropoff', [RideController::class, 'dropOffDelivery'])->name('deliveries.dropoff')->whereNumber(['trip', 'delivery']);
         Route::patch('{trip}/settle-cash', [RideController::class, 'settleCash'])->name('settle-cash')->whereNumber('trip');
+        Route::patch('{trip}/passengers/{passenger}/settle-cash', [RideController::class, 'settlePassengerCash'])->name('passengers.settle-cash')->whereNumber(['trip', 'passenger']);
+        Route::patch('{trip}/deliveries/{delivery}/settle-cash', [RideController::class, 'settleDeliveryCash'])->name('deliveries.settle-cash')->whereNumber(['trip', 'delivery']);
         Route::post('{trip}/location', [RideController::class, 'logLocation'])->name('log-location');
     });
 

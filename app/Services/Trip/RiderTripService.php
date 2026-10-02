@@ -977,7 +977,67 @@ readonly class RiderTripService
         $riderProfile = $this->riderProfile($user);
         $trip = $this->ownRide($user, $tripId)->load('zone');
 
-        $settled = DB::transaction(function () use ($trip, $riderProfile): array {
+        $this->settleCashFor($trip, $riderProfile, null, 'There is no cash payment waiting to be settled on this trip.');
+
+        return $trip->fresh()->load([
+            'vehicleType', 'cancellationReason',
+            'passengers.customer', 'passengers.stops', 'passengers.fareBreakdown',
+            'deliveries.sender', 'deliveries.stops',
+        ]);
+    }
+
+    /**
+     * Rider acknowledges receiving cash from one specific dropped-off passenger -- for
+     * ride-shares, where each passenger pays their own fare, so the driver confirms each
+     * payment as it's actually received rather than all at once.
+     */
+    public function settlePassengerCash(User $user, int $tripId, int $tripPassengerId): TripPassenger
+    {
+        $riderProfile = $this->riderProfile($user);
+        $trip = $this->ownRide($user, $tripId)->load('zone');
+
+        if (! in_array($trip->type, ['ride', 'ride_share'], true)) {
+            throw ValidationException::withMessages([
+                'type' => 'This action is only available on ride and ride-share trips.',
+            ]);
+        }
+
+        $passenger = TripPassenger::query()->where('trip_id', $trip->id)->where('id', $tripPassengerId)->firstOrFail();
+
+        $this->settleCashFor($trip, $riderProfile, $passenger->id, 'This passenger has no cash payment waiting to be settled.');
+
+        return $passenger->fresh()->load(['customer', 'fareBreakdown', 'stops']);
+    }
+
+    /**
+     * Rider acknowledges receiving cash for one specific dropped-off delivery -- mirrors
+     * settlePassengerCash() for delivery/delivery_share trips.
+     */
+    public function settleDeliveryCash(User $user, int $tripId, int $deliveryDetailsId): DeliveryDetails
+    {
+        $riderProfile = $this->riderProfile($user);
+        $trip = $this->ownRide($user, $tripId)->load('zone');
+
+        if (! in_array($trip->type, ['delivery', 'delivery_share'], true)) {
+            throw ValidationException::withMessages([
+                'type' => 'This action is only available on delivery and delivery-share trips.',
+            ]);
+        }
+
+        $delivery = DeliveryDetails::query()->where('trip_id', $trip->id)->where('id', $deliveryDetailsId)->firstOrFail();
+
+        $this->settleCashFor($trip, $riderProfile, $delivery->id, 'This delivery has no cash payment waiting to be settled.');
+
+        return $delivery->fresh()->load(['sender', 'stops']);
+    }
+
+    /**
+     * Settles the trip's pending cash payments -- all of them, or only the one passenger/
+     * delivery given by $settleableId -- then notifies each customer.
+     */
+    private function settleCashFor(Trip $trip, RiderProfile $riderProfile, ?int $settleableId, string $nothingToSettleMessage): void
+    {
+        $settled = DB::transaction(function () use ($trip, $riderProfile, $settleableId, $nothingToSettleMessage): array {
             $riderWallet = Wallet::query()
                 ->where('user_id', $riderProfile->user_id)
                 ->where('status', 'active')
@@ -992,11 +1052,11 @@ readonly class RiderTripService
 
             // Read after taking the wallet lock so a concurrent settle can't pay the same
             // passenger/delivery twice.
-            $settleables = $this->pendingCashSettleables($trip);
+            $settleables = $this->pendingCashSettleables($trip, $settleableId);
 
             if ($settleables === []) {
                 throw ValidationException::withMessages([
-                    'payment_status' => 'There is no cash payment waiting to be settled on this trip.',
+                    'payment_status' => $nothingToSettleMessage,
                 ]);
             }
 
@@ -1055,22 +1115,17 @@ readonly class RiderTripService
                 ]);
             }
         }
-
-        return $trip->fresh()->load([
-            'vehicleType', 'cancellationReason',
-            'passengers.customer', 'passengers.stops', 'passengers.fareBreakdown',
-            'deliveries.sender', 'deliveries.stops',
-        ]);
     }
 
     /**
      * @return array<int, TripPassenger|DeliveryDetails>
      */
-    private function pendingCashSettleables(Trip $trip): array
+    private function pendingCashSettleables(Trip $trip, ?int $settleableId = null): array
     {
         if (in_array($trip->type, ['ride', 'ride_share'], true)) {
             return TripPassenger::query()
                 ->where('trip_id', $trip->id)
+                ->when($settleableId !== null, fn ($query) => $query->where('id', $settleableId))
                 ->where('status', 'dropped_off')
                 ->whereHas('fareBreakdown', fn ($query) => $query->where('payment_method', 'cash')->where('payment_status', '!=', 'paid'))
                 ->with(['fareBreakdown', 'customer.devices', 'trip'])
@@ -1080,6 +1135,7 @@ readonly class RiderTripService
 
         return DeliveryDetails::query()
             ->where('trip_id', $trip->id)
+            ->when($settleableId !== null, fn ($query) => $query->where('id', $settleableId))
             ->where('status', 'dropped_off')
             ->where('payment_method', 'cash')
             ->where('payment_status', '!=', 'paid')

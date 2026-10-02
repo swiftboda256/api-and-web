@@ -142,6 +142,22 @@ class RideController extends Controller
         return self::success(new RideResource($riderTripService->settleCash($user, $trip)));
     }
 
+    public function settlePassengerCash(Request $request, int $trip, int $passenger, RiderTripService $riderTripService): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        return self::success(new RidePassengerResource($riderTripService->settlePassengerCash($user, $trip, $passenger)));
+    }
+
+    public function settleDeliveryCash(Request $request, int $trip, int $delivery, RiderTripService $riderTripService): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        return self::success(new RideDeliveryResource($riderTripService->settleDeliveryCash($user, $trip, $delivery)));
+    }
+
     public function logLocation(LogRideLocationRequest $request, int $trip, RiderTripService $riderTripService): JsonResponse
     {
         /** @var User $user */
