@@ -40,8 +40,10 @@ class TripPassengerResource extends JsonResource
             'arrived_at' => $trip->arrived_at,
             'started_at' => $trip->started_at,
             'completed_at' => $trip->completed_at,
-            // Not shown while the passenger waits on the driver's approval.
-            'rider' => $this->status !== 'pending_approval' && $trip->relationLoaded('rider') && $trip->rider ? [
+            // Only once a driver has accepted this passenger (matched_at) -- not while a
+            // ride-share request waits on a driver's approval, nor after it's cancelled
+            // before any driver accepted.
+            'rider' => $this->matched_at !== null && $trip->relationLoaded('rider') && $trip->rider ? [
                 'name' => $trip->rider->name,
                 'rider_ref' => $trip->rider->riderProfile?->rider_ref,
                 'gender' => $trip->rider->riderProfile?->gender,

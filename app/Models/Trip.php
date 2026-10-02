@@ -162,11 +162,14 @@ class Trip extends BaseModel
     }
 
     /**
+     * The vehicle's delivery route. Excludes stops with no sequence -- those belong to a
+     * cancelled delivery, kept only for history.
+     *
      * @return HasMany<DeliveryStop, $this>
      */
     public function deliveryStops(): HasMany
     {
-        return $this->hasMany(DeliveryStop::class)->orderBy('sequence');
+        return $this->hasMany(DeliveryStop::class)->whereNotNull('sequence')->orderBy('sequence');
     }
 
     /**

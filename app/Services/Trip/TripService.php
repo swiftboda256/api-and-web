@@ -859,12 +859,11 @@ readonly class TripService
             ]);
         }
 
-        // Still waiting on a driver: withdraw the offer (returning its held seats) and drop
-        // the passenger's unsequenced stops -- they never joined the route, so there are no
-        // route or passenger-count changes to undo.
+        // Still waiting on a driver: withdraw the offer (returning its held seats). Their
+        // stops were never on the route (no sequence) and stay that way, kept for history --
+        // so there are no route or passenger-count changes to undo.
         if ($passenger->status === 'pending_approval') {
             $this->rideShareMatching->release($passenger);
-            $passenger->stops()->delete();
 
             $passenger->update([
                 'status' => 'cancelled',
@@ -875,7 +874,7 @@ readonly class TripService
 
             $this->notifyRiderOfCustomerCancellation($passenger);
 
-            return $passenger->refresh()->load(['trip', 'stops']);
+            return $passenger->refresh()->load($this->passengerEagerLoads());
         }
 
         DB::transaction(function () use ($passenger, $user, $cancellationReasonId): void {
@@ -888,11 +887,9 @@ readonly class TripService
                 'cancellation_reason_id' => $cancellationReasonId,
             ]);
 
-            $unvisitedStopIds = $passenger->stops()->whereNull('arrived_at')->pluck('id');
-
-            if ($unvisitedStopIds->isNotEmpty()) {
-                TripStop::query()->whereIn('id', $unvisitedStopIds)->delete();
-            }
+            // Unvisited stops come off the route (no sequence) but are kept, so the
+            // cancelled booking still shows its pickup/dropoff.
+            $passenger->stops()->whereNull('arrived_at')->update(['sequence' => null]);
 
             if ($trip->status === 'in_progress') {
                 $trip->increment('available_seats', $passenger->seats_requested);
@@ -910,7 +907,7 @@ readonly class TripService
         $this->releaseRiderIfTripCancelled($passenger->trip);
         $this->notifyRiderOfCustomerCancellation($passenger);
 
-        return $passenger->refresh()->load(['trip', 'stops']);
+        return $passenger->refresh()->load($this->passengerEagerLoads());
     }
 
     /**
@@ -941,11 +938,9 @@ readonly class TripService
                 'cancellation_reason_id' => $cancellationReasonId,
             ]);
 
-            $unvisitedStopIds = $delivery->stops()->whereNull('arrived_at')->pluck('id');
-
-            if ($unvisitedStopIds->isNotEmpty()) {
-                DeliveryStop::query()->whereIn('id', $unvisitedStopIds)->delete();
-            }
+            // Unvisited stops come off the route (no sequence) but are kept, so the
+            // cancelled booking still shows its pickup/dropoff.
+            $delivery->stops()->whereNull('arrived_at')->update(['sequence' => null]);
 
             if ($trip->status === 'in_progress') {
                 $trip->increment('available_cargo_weight_kg', (float) $delivery->package_weight_kg);
@@ -963,7 +958,7 @@ readonly class TripService
         $this->releaseRiderIfTripCancelled($delivery->trip);
         $this->notifyRiderOfCustomerCancellation($delivery);
 
-        return $delivery->refresh()->load(['trip', 'stops']);
+        return $delivery->refresh()->load($this->deliveryEagerLoads());
     }
 
     /**
@@ -1074,7 +1069,7 @@ readonly class TripService
 
         $pickupStop = $isRide
             ? TripStop::query()->where('trip_id', $trip->id)->where('stop_type', 'pickup')->whereNotNull('sequence')->orderBy('sequence')->first()
-            : DeliveryStop::query()->where('trip_id', $trip->id)->where('stop_type', 'pickup')->orderBy('sequence')->first();
+            : DeliveryStop::query()->where('trip_id', $trip->id)->where('stop_type', 'pickup')->whereNotNull('sequence')->orderBy('sequence')->first();
 
         if ($item === null || $pickupStop?->location === null) {
             return;

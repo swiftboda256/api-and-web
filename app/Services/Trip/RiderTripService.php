@@ -108,7 +108,7 @@ readonly class RiderTripService
         $pickupStopLocation = DB::raw(<<<'SQL'
             COALESCE(
                 (SELECT location FROM trip_stops WHERE trip_stops.trip_id = trips.id AND trip_stops.stop_type = 'pickup' AND trip_stops.sequence IS NOT NULL ORDER BY trip_stops.sequence ASC LIMIT 1),
-                (SELECT location FROM delivery_stops WHERE delivery_stops.trip_id = trips.id AND delivery_stops.stop_type = 'pickup' ORDER BY delivery_stops.sequence ASC LIMIT 1)
+                (SELECT location FROM delivery_stops WHERE delivery_stops.trip_id = trips.id AND delivery_stops.stop_type = 'pickup' AND delivery_stops.sequence IS NOT NULL ORDER BY delivery_stops.sequence ASC LIMIT 1)
             )
             SQL);
 
@@ -358,7 +358,7 @@ readonly class RiderTripService
         // pointed at anyway (the first passenger/delivery's pickup point).
         $pickupStop = in_array($trip->type, ['ride', 'ride_share'], true)
             ? TripStop::query()->where('trip_id', $trip->id)->where('stop_type', 'pickup')->whereNotNull('sequence')->orderBy('sequence')->first()
-            : DeliveryStop::query()->where('trip_id', $trip->id)->where('stop_type', 'pickup')->orderBy('sequence')->first();
+            : DeliveryStop::query()->where('trip_id', $trip->id)->where('stop_type', 'pickup')->whereNotNull('sequence')->orderBy('sequence')->first();
         $pickup = $pickupStop?->location;
         $vehicleTypeId = (int) $trip->vehicle_type_id;
 

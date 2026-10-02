@@ -2,6 +2,7 @@
 
 use App\Models\DeliveryDetails;
 use App\Models\PricingRule;
+use App\Models\TripCancellationReason;
 use App\Models\TripPassenger;
 use App\Models\User;
 use App\Models\VehicleType;
@@ -50,16 +51,26 @@ function book(array $extra): array
 
 test('cancelling a ride by trip id cancels the customer\'s passenger booking and the trip', function () {
     $booking = book(['type' => 'ride']);
+    $reason = TripCancellationReason::query()->create(['label' => 'Changed my mind', 'applies_to' => 'customer', 'is_active' => true]);
 
-    $this->patchJson("/api/v1/user-app/trips/cancel-ride/{$booking['trip_id']}", ['cancellation_reason_id' => null])
+    $this->patchJson("/api/v1/user-app/trips/cancel-ride/{$booking['trip_id']}", ['cancellation_reason_id' => $reason->id])
         ->assertOk()
         ->assertJsonPath('data.id', $booking['id'])
-        ->assertJsonPath('data.status', 'cancelled');
+        ->assertJsonPath('data.status', 'cancelled')
+        ->assertJsonPath('data.cancellation_reason', 'Changed my mind')
+        ->assertJsonPath('data.customer.id', $this->customer->id)
+        ->assertJsonPath('data.vehicle_type.id', $this->vehicleType->id)
+        ->assertJsonPath('data.pickup.latitude', 0.34)
+        ->assertJsonPath('data.dropoff.latitude', 0.32);
 
     $passenger = TripPassenger::query()->findOrFail($booking['id']);
 
+    // Stops kept for history, but off the route.
     expect($passenger->status)->toBe('cancelled')
-        ->and($passenger->trip->status)->toBe('cancelled');
+        ->and($passenger->trip->status)->toBe('cancelled')
+        ->and($passenger->stops)->toHaveCount(2)
+        ->and($passenger->stops->pluck('sequence')->filter()->all())->toBe([])
+        ->and($passenger->trip->stops)->toHaveCount(0);
 });
 
 test('cancelling a delivery by trip id cancels the customer\'s delivery booking', function () {
@@ -73,9 +84,16 @@ test('cancelling a delivery by trip id cancels the customer\'s delivery booking'
         ->assertOk()
         ->assertJsonPath('data.id', $booking['id'])
         ->assertJsonPath('data.status', 'cancelled')
-        ->assertJsonPath('data.recipient_name', 'Jane Namukasa');
+        ->assertJsonPath('data.recipient_name', 'Jane Namukasa')
+        ->assertJsonPath('data.pickup.latitude', 0.34)
+        ->assertJsonPath('data.dropoff.latitude', 0.32);
 
-    expect(DeliveryDetails::query()->findOrFail($booking['id'])->status)->toBe('cancelled');
+    $delivery = DeliveryDetails::query()->findOrFail($booking['id']);
+
+    expect($delivery->status)->toBe('cancelled')
+        ->and($delivery->stops)->toHaveCount(2)
+        ->and($delivery->stops->pluck('sequence')->filter()->all())->toBe([])
+        ->and($delivery->trip->deliveryStops)->toHaveCount(0);
 });
 
 test('a customer cannot cancel a trip they have no booking on', function () {

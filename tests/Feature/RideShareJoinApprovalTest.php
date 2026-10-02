@@ -305,13 +305,18 @@ test('releasing twice does not return the held seats twice', function () {
         ->and($this->ongoing->fresh()->available_seats)->toBe(3);
 });
 
-test('the customer can cancel while pending approval, releasing the seats and stops', function () {
+test('the customer can cancel while pending approval, releasing the seats but keeping the stops off the route', function () {
     $passenger = orderRideShare($this);
 
-    $this->patchJson("/api/v1/user-app/trips/cancel-ride/{$passenger->trip_id}")->assertOk();
+    $this->patchJson("/api/v1/user-app/trips/cancel-ride/{$passenger->trip_id}")
+        ->assertOk()
+        ->assertJsonPath('data.rider', null)
+        ->assertJsonPath('data.pickup.address', 'Pickup B')
+        ->assertJsonPath('data.dropoff.address', 'Dropoff B');
 
     expect($passenger->fresh()->status)->toBe('cancelled')
-        ->and(TripStop::query()->where('trip_passenger_id', $passenger->id)->count())->toBe(0)
+        ->and(TripStop::query()->where('trip_passenger_id', $passenger->id)->whereNull('sequence')->count())->toBe(2)
+        ->and($this->ongoing->fresh()->stops)->toHaveCount(2)
         ->and($this->ongoing->fresh()->available_seats)->toBe(3)
         ->and($this->ongoing->fresh()->passenger_count)->toBe(1);
 });
