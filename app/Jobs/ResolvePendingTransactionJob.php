@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\Transaction;
 use App\Services\Payment\Constants\MobileMoneyTransactionStatus;
 use App\Services\Payment\Contracts\PaymentGateway;
+use App\Services\Payment\MobileMoneyResult;
 use App\Services\Wallet\TransactionService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -29,6 +30,16 @@ class ResolvePendingTransactionJob implements ShouldQueue
 
     public function handle(PaymentGateway $paymentGateway, TransactionService $transactionService): void
     {
+        $this->check($paymentGateway, $transactionService);
+    }
+
+    /**
+     * Checks the gateway and resolves the transaction, returning the gateway's
+     * result so callers (e.g. the admin "Check status" action) can show it.
+     * Null when the check was skipped or the gateway call threw.
+     */
+    public function check(PaymentGateway $paymentGateway, TransactionService $transactionService): ?MobileMoneyResult
+    {
         Log::info('check_txn_status.started', ['transaction_id' => $this->transactionId]);
 
         $transaction = Transaction::query()->find($this->transactionId);
@@ -43,7 +54,7 @@ class ResolvePendingTransactionJob implements ShouldQueue
                 },
             ]);
 
-            return;
+            return null;
         }
 
         try {
@@ -54,8 +65,18 @@ class ResolvePendingTransactionJob implements ShouldQueue
                 'error' => $e->getMessage(),
             ]);
 
-            return;
+            return null;
         }
+
+        // Log check status data
+        Log::info('check_txn_status.result', [
+            'transaction_id' => $transaction->id,
+            'status' => $result->status->value,
+            'transaction_reference' => $result->transactionReference,
+            'gateway_reference' => $result->gatewayReference,
+            'amount' => $result->amount,
+            'failure_reason' => $result->failureReason,
+        ]);
 
         match ($result->status) {
             MobileMoneyTransactionStatus::Succeeded => $transactionService->resolvePendingTransaction(
@@ -77,5 +98,7 @@ class ResolvePendingTransactionJob implements ShouldQueue
             'transaction_id' => $transaction->id,
             'status' => $result->status->value,
         ]);
+
+        return $result;
     }
 }

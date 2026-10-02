@@ -830,6 +830,23 @@ readonly class TripService
             ->with('trip')
             ->firstOrFail();
 
+        if ($trip->rider_id !== null) {
+            // Free the rider for new trips; only touch riders still marked on_trip so an
+            // offline rider isn't flipped back online.
+            RiderProfile::query()
+                ->where('user_id', $trip->rider_id)
+                ->where('availability_status', 'on_trip')
+                ->update(['availability_status' => 'online']);
+
+            try {
+                $this->notifyRiderOfCustomerCancellation($trip);
+            } catch (Throwable $e) {
+                Log::error('trip.customer_cancellation_notification_failed', [
+                    'trip_id' => $trip->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
         if (in_array($delivery->status, ['dropped_off', 'cancelled'], true)) {
             throw ValidationException::withMessages([
                 'status' => 'This delivery can no longer be cancelled.',

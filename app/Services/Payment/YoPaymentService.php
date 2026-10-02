@@ -148,7 +148,7 @@ class YoPaymentService implements PaymentGateway
             'TransactionReference' => $transactionReference,
         ]);
 
-        return $this->submit($xml, null);
+        return $this->submit($xml, null, isStatusCheck: true);
     }
 
     /**
@@ -279,7 +279,13 @@ class YoPaymentService implements PaymentGateway
         return (string) $parsed->asXML();
     }
 
-    private function submit(string $xml, ?float $amount): MobileMoneyResult
+    /**
+     * For status checks ($isStatusCheck), an unreachable gateway or a non-OK
+     * response only means the outcome is unknown, not that the transaction
+     * failed — so it maps to Indeterminate and stays pending for the next poll.
+     * Only a TransactionStatus of FAILED is a definitive failure.
+     */
+    private function submit(string $xml, ?float $amount, bool $isStatusCheck = false): MobileMoneyResult
     {
         Log::info('yo.request', [
             'xml' => $this->maskCredentialsForLogging($xml),
@@ -302,7 +308,7 @@ class YoPaymentService implements PaymentGateway
             ]);
 
             return new MobileMoneyResult(
-                status: MobileMoneyTransactionStatus::Failed,
+                status: $isStatusCheck ? MobileMoneyTransactionStatus::Indeterminate : MobileMoneyTransactionStatus::Failed,
                 transactionReference: null,
                 gatewayReference: null,
                 amount: $amount,
@@ -310,7 +316,7 @@ class YoPaymentService implements PaymentGateway
             );
         }
 
-        return $this->mapResponseToResult($this->parseResponseXml($response->body()), $amount);
+        return $this->mapResponseToResult($this->parseResponseXml($response->body()), $amount, $isStatusCheck);
     }
 
     /**
@@ -336,13 +342,13 @@ class YoPaymentService implements PaymentGateway
     /**
      * @param  array<string, mixed>  $fields
      */
-    private function mapResponseToResult(array $fields, ?float $amount): MobileMoneyResult
+    private function mapResponseToResult(array $fields, ?float $amount, bool $isStatusCheck = false): MobileMoneyResult
     {
         $status = strtoupper((string) ($fields['Status'] ?? ''));
 
         if ($status !== 'OK') {
             return new MobileMoneyResult(
-                status: MobileMoneyTransactionStatus::Failed,
+                status: $isStatusCheck ? MobileMoneyTransactionStatus::Indeterminate : MobileMoneyTransactionStatus::Failed,
                 transactionReference: $fields['TransactionReference'] ?? null,
                 gatewayReference: null,
                 amount: $amount,

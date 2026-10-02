@@ -24,6 +24,15 @@ readonly class CheckoutService
         $zone = Zone::query()
             ->where(ST::contains('boundary', $pickup), true)
             ->where('is_active', true)
+            // Zones can overlap (e.g. Kampala inside the surrounding districts). The
+            // smallest, most specific zone wins (area rounded to km² so float noise
+            // doesn't decide); among equal-sized zones, the one centred nearest the pickup.
+            ->orderByRaw('ROUND(ST_Area(boundary::geography) / 1000000)')
+            ->orderByRaw(
+                'ST_Distance(ST_Centroid(boundary)::geography, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography)',
+                [$pickup->getLongitude(), $pickup->getLatitude()],
+            )
+            ->orderBy('id')
             ->first();
 
         if (! $zone) {
@@ -66,24 +75,29 @@ readonly class CheckoutService
     ): array {
         $surgeSchedule = $this->resolveSurgeSchedule($zone, $vehicleTypeId, $at);
 
-        $baseFare = (float) $pricingRule->base_fare;
-        $perKmRate = (float) $pricingRule->per_km_rate + (float) ($surgeSchedule->fixed_amount ?? 0);
+        // During a surge window the schedule's fixed_amount replaces the pricing rule's base fare.
+        $baseFare = $surgeSchedule && (float) $surgeSchedule->fixed_amount > 0
+            ? (float) $surgeSchedule->fixed_amount
+            : (float) $pricingRule->base_fare;
         $freeDistanceKm = (float) $pricingRule->vehicleType->free_distance_km;
         $chargeableDistanceKm = max(0.0, $distanceKm - $freeDistanceKm);
+        // During a surge window the schedule's per_km_rate (when set) replaces the pricing rule's.
+        $perKmRate = $surgeSchedule && $surgeSchedule->per_km_rate !== null
+            ? (float) $surgeSchedule->per_km_rate
+            : (float) $pricingRule->per_km_rate;
         $distanceFare = round($perKmRate * $chargeableDistanceKm, 2);
         $timeFare = round((float) $pricingRule->per_minute_rate * $durationMinutes, 2);
-        $surgeMultiplier = ((float) $pricingRule->surge_multiplier ?: 1.0) * ((float) ($surgeSchedule->multiplier ?? 1.0) ?: 1.0);
 
         $subtotal = $baseFare + $distanceFare + $timeFare;
-        $surgeAmount = round($subtotal * ($surgeMultiplier - 1), 2);
-        $fare = max($subtotal + $surgeAmount, (float) $pricingRule->minimum_fare);
+        $fare = max($subtotal, (float) $pricingRule->minimum_fare);
 
         return [
             'base_fare' => $baseFare,
             'distance_fare' => $distanceFare,
             'time_fare' => $timeFare,
-            'surge_multiplier' => $surgeMultiplier,
-            'surge_amount' => $surgeAmount,
+            // Kept for the trip_fare_breakdowns columns and API keys; multiplier surge no longer exists.
+            'surge_multiplier' => 1.0,
+            'surge_amount' => 0.0,
             'fare' => round($fare, 2),
         ];
     }
@@ -304,15 +318,28 @@ readonly class CheckoutService
     private function resolveSurgeSchedule(Zone $zone, int $vehicleTypeId, CarbonInterface $at): ?SurgePricingSchedule
     {
         $localTime = $at->clone()->setTimezone($zone->timezone ?? config('app.timezone'));
+        $time = $localTime->format('H:i:s');
+        $today = $localTime->dayOfWeek;
+        $yesterday = ($today + 6) % 7;
+
+        // A null day_of_week means every day.
+        $onDay = fn ($query, int $day) => $query->where(fn ($query) => $query->whereNull('day_of_week')->orWhere('day_of_week', $day));
 
         return SurgePricingSchedule::query()
             ->where('zone_id', $zone->id)
             ->where('is_active', true)
             ->where(fn ($query) => $query->whereNull('vehicle_type_id')->orWhere('vehicle_type_id', $vehicleTypeId))
-            ->where(fn ($query) => $query->whereNull('day_of_week')->orWhere('day_of_week', $localTime->dayOfWeek))
-            ->whereTime('start_time', '<=', $localTime->format('H:i:s'))
-            ->whereTime('end_time', '>=', $localTime->format('H:i:s'))
-            ->orderByDesc('multiplier')
+            ->where(fn ($query) => $query
+                // Same-day window (e.g. 07:00-09:00) on today.
+                ->where(fn ($query) => $onDay($query->whereColumn('start_time', '<=', 'end_time'), $today)
+                    ->whereTime('start_time', '<=', $time)
+                    ->whereTime('end_time', '>=', $time))
+                // Overnight window (e.g. 22:30-05:30) that started today: before midnight.
+                ->orWhere(fn ($query) => $onDay($query->whereColumn('start_time', '>', 'end_time'), $today)
+                    ->whereTime('start_time', '<=', $time))
+                // Overnight window that started yesterday: after midnight.
+                ->orWhere(fn ($query) => $onDay($query->whereColumn('start_time', '>', 'end_time'), $yesterday)
+                    ->whereTime('end_time', '>=', $time)))
             ->orderByDesc('fixed_amount')
             ->first();
     }
