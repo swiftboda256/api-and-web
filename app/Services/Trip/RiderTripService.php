@@ -520,6 +520,36 @@ readonly class RiderTripService
         }
     }
 
+    /**
+     * Posted ride only: the driver removes an approved passenger who hasn't been picked up
+     * (a no-show, or someone who doesn't match the booking), giving a rider cancellation
+     * reason. Once the ride is under way, removing the last passenger still to be dropped
+     * off completes it.
+     */
+    public function removePassenger(User $user, int $tripId, int $tripPassengerId, ?int $cancellationReasonId): TripPassenger
+    {
+        $trip = $this->ownRide($user, $tripId);
+
+        if ($trip->type !== 'posted_ride') {
+            throw ValidationException::withMessages([
+                'type' => 'This action is only available on posted-ride trips.',
+            ]);
+        }
+
+        $passenger = TripPassenger::query()
+            ->where('trip_id', $tripId)
+            ->where('id', $tripPassengerId)
+            ->firstOrFail();
+
+        $this->postedRides->removePassenger($passenger, $user, $cancellationReasonId);
+
+        if ($trip->status === 'in_progress') {
+            $this->maybeCompleteTrip($trip, $this->riderProfile($user));
+        }
+
+        return $passenger->fresh()->load(['customer', 'fareBreakdown', 'stops', 'cancellationReason']);
+    }
+
     private function pendingPassenger(User $user, int $tripId, int $tripPassengerId): TripPassenger
     {
         $trip = $this->ownRide($user, $tripId);

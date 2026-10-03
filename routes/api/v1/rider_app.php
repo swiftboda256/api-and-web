@@ -55,6 +55,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('{trip}/end', [RideController::class, 'end'])->name('end');
         Route::patch('{trip}/passengers/{passenger}/accept', [RideController::class, 'acceptPassenger'])->name('passengers.accept')->whereNumber(['trip', 'passenger']);
         Route::patch('{trip}/passengers/{passenger}/decline', [RideController::class, 'declinePassenger'])->name('passengers.decline')->whereNumber(['trip', 'passenger']);
+        Route::patch('{trip}/passengers/{passenger}/remove', [RideController::class, 'removePassenger'])->name('passengers.remove')->whereNumber(['trip', 'passenger']);
         Route::patch('{trip}/passengers/{passenger}/pickup', [RideController::class, 'pickUpPassenger'])->name('passengers.pickup')->whereNumber(['trip', 'passenger']);
         Route::patch('{trip}/passengers/{passenger}/dropoff', [RideController::class, 'dropOffPassenger'])->name('passengers.dropoff')->whereNumber(['trip', 'passenger']);
         Route::patch('{trip}/deliveries/{delivery}/pickup', [RideController::class, 'pickUpDelivery'])->name('deliveries.pickup')->whereNumber(['trip', 'delivery']);

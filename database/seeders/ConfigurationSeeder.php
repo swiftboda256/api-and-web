@@ -191,6 +191,26 @@ class ConfigurationSeeder extends Seeder
         );
 
         Configuration::query()->firstOrCreate(
+            ['key' => 'posted_ride_request_timeout_minutes'],
+            [
+                'value' => 60,
+                'group' => 'posted_ride',
+                'description' => 'Minutes a driver has to approve a seat booking on their posted ride before it expires and the seats are released. Never later than the ride\'s departure time.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'posted_ride_search_radius_km'],
+            [
+                'value' => 5,
+                'group' => 'posted_ride',
+                'description' => 'Radius (km) around the customer\'s chosen origin/destination within which posted rides are returned when browsing.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
             ['key' => 'delivery_share_discount_percentage'],
             [
                 'value' => 20,

@@ -42,8 +42,8 @@ class RidePassengerResource extends JsonResource
                 'address' => $dropoffStop->address,
                 'arrived_at' => $dropoffStop->arrived_at,
             ] : null,
-            // Ride-share join request details, set when the passenger is offered to this
-            // trip's driver ('pending_approval'): accept/decline before request_expires_at.
+            // Join/booking request details, set while the passenger is 'pending_approval':
+            // accept/decline before request_expires_at. Detour is ride-share only.
             'detour_minutes' => $this->detour_minutes,
             'detour_km' => $this->detour_km,
             'request_expires_at' => $this->request_expires_at,
@@ -54,6 +54,7 @@ class RidePassengerResource extends JsonResource
             'currency_code' => $fareBreakdown?->currency_code,
             'payment_method' => $fareBreakdown?->payment_method,
             'payment_status' => $fareBreakdown?->payment_status,
+            'cancellation_reason' => $this->relationLoaded('cancellationReason') ? $this->cancellationReason?->label : null,
             'requested_at' => $this->requested_at,
             'matched_at' => $this->matched_at,
             'picked_up_at' => $this->picked_up_at,

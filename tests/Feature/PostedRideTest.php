@@ -3,6 +3,7 @@
 use App\Models\PricingRule;
 use App\Models\RiderProfile;
 use App\Models\Trip;
+use App\Models\TripCancellationReason;
 use App\Models\TripPassenger;
 use App\Models\TripStop;
 use App\Models\User;
@@ -21,7 +22,8 @@ use Laravel\Sanctum\Sanctum;
  * ride-share trip and settles each passenger at the fixed fare.
  */
 beforeEach(function () {
-    $this->app->instance(FcmGateway::class, Mockery::spy(FcmGateway::class));
+    $this->push = Mockery::spy(FcmGateway::class);
+    $this->app->instance(FcmGateway::class, $this->push);
 
     $this->zone = Zone::factory()->create([
         'boundary' => Polygon::make([LineString::make([
@@ -73,6 +75,16 @@ function bookSeats($test, Trip $trip, User $customer, int $seats = 1): TripPasse
     ])->assertCreated();
 
     return TripPassenger::query()->findOrFail($response->json('data.id'));
+}
+
+/**
+ * Asserts a push carrying the given data 'type' was sent.
+ */
+function assertPushed($test, string $type): void
+{
+    $test->push->shouldHaveReceived('sendToTokens')
+        ->withArgs(fn ($tokens, $title, $body, $data) => ($data['type'] ?? null) === $type)
+        ->atLeast()->once();
 }
 
 function approveBooking($test, TripPassenger $passenger): void
@@ -163,7 +175,10 @@ test('approving a booking matches the passenger and puts their stops on the rout
     approveBooking($this, $first);
     approveBooking($this, $second);
 
+    assertPushed($this, 'posted_ride_booking_approved');
+
     expect($first->fresh()->status)->toBe('matched')
+        ->and($first->fresh()->request_expires_at)->toBeNull()
         ->and($trip->fresh()->passenger_count)->toBe(2)
         ->and($trip->fresh()->available_seats)->toBe(1);
 
@@ -270,4 +285,120 @@ test('the driver cancelling the ride cancels every booking and does not re-dispa
         ->and($trip->rider_id)->toBe($this->driver->id)
         ->and($approved->fresh()->status)->toBe('cancelled')
         ->and($pending->fresh()->status)->toBe('cancelled');
+});
+
+test('a booking request expires after the configured timeout, but never after departure', function () {
+    $trip = postRide($this);
+    $passenger = bookSeats($this, $trip, $this->customer);
+
+    expect($passenger->request_expires_at->diffInMinutes(now(), true))->toEqualWithDelta(60, 1);
+
+    $soon = postRide($this, ['departs_at' => now()->addMinutes(20)->toIso8601String()]);
+    $soonPassenger = bookSeats($this, $soon, $this->customer);
+
+    expect($soonPassenger->request_expires_at->equalTo($soon->departs_at))->toBeTrue();
+});
+
+test('expired requests are cancelled, release their seats and notify the customer', function () {
+    $trip = postRide($this);
+    $passenger = bookSeats($this, $trip, $this->customer, seats: 2);
+
+    // Not yet due -- left alone, including by the ride-share expiry job.
+    $this->artisan('posted-ride:expire-requests')->assertSuccessful();
+    $this->artisan('ride-share:expire-join-requests')->assertSuccessful();
+    expect($passenger->fresh()->status)->toBe('pending_approval');
+
+    $this->travel(61)->minutes();
+    $this->artisan('posted-ride:expire-requests')->assertSuccessful();
+
+    expect($passenger->fresh()->status)->toBe('cancelled')
+        ->and($passenger->fresh()->cancelled_by)->toBeNull()
+        ->and($trip->fresh()->available_seats)->toBe(3)
+        ->and($trip->fresh()->status)->toBe('open');
+
+    assertPushed($this, 'posted_ride_booking_expired');
+});
+
+test('an expired request can no longer be approved', function () {
+    $trip = postRide($this);
+    $passenger = bookSeats($this, $trip, $this->customer);
+
+    $this->travel(61)->minutes();
+
+    Sanctum::actingAs($this->driver);
+    $this->patchJson("/api/v1/rider-app/rides/{$trip->id}/passengers/{$passenger->id}/accept")
+        ->assertUnprocessable()
+        ->assertJsonPath('errors.status.0', 'This request has expired.');
+});
+
+test('the driver removes an approved passenger before departure, freeing their seats', function () {
+    $reason = TripCancellationReason::query()->create(['label' => 'Passenger did not show up', 'applies_to' => 'rider', 'is_active' => true]);
+    $trip = postRide($this);
+    $passenger = bookSeats($this, $trip, $this->customer, seats: 2);
+    approveBooking($this, $passenger);
+
+    $this->patchJson("/api/v1/rider-app/rides/{$trip->id}/passengers/{$passenger->id}/remove", ['cancellation_reason_id' => $reason->id])
+        ->assertOk()
+        ->assertJsonPath('message', 'Passenger removed.')
+        ->assertJsonPath('data.status', 'cancelled')
+        ->assertJsonPath('data.cancellation_reason', 'Passenger did not show up');
+
+    $trip->refresh();
+
+    expect($passenger->fresh()->cancelled_by)->toBe($this->driver->id)
+        ->and($passenger->fareBreakdown->fresh()->final_fare)->toBeNull()
+        ->and($trip->status)->toBe('open')
+        ->and($trip->available_seats)->toBe(3)
+        ->and($trip->passenger_count)->toBe(0)
+        ->and($trip->stops)->toBeEmpty();
+
+    assertPushed($this, 'posted_ride_passenger_removed');
+
+    // The ride is bookable again.
+    Sanctum::actingAs(User::factory()->create());
+    $this->getJson('/api/v1/user-app/trips/posted?seats=3')->assertOk()->assertJsonPath('data.rides.0.id', $trip->id);
+});
+
+test('only approved passengers not yet picked up can be removed, with a rider reason', function () {
+    $customerReason = TripCancellationReason::query()->create(['label' => 'Changed my mind', 'applies_to' => 'customer', 'is_active' => true]);
+    $trip = postRide($this);
+    $pending = bookSeats($this, $trip, $this->customer);
+
+    Sanctum::actingAs($this->driver);
+    $this->patchJson("/api/v1/rider-app/rides/{$trip->id}/passengers/{$pending->id}/remove")
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('status');
+
+    approveBooking($this, $pending);
+    $this->patchJson("/api/v1/rider-app/rides/{$trip->id}/passengers/{$pending->id}/remove", ['cancellation_reason_id' => $customerReason->id])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('cancellation_reason_id');
+
+    $this->patchJson("/api/v1/rider-app/rides/{$trip->id}/start")->assertOk();
+    $this->patchJson("/api/v1/rider-app/rides/{$trip->id}/passengers/{$pending->id}/pickup")->assertOk();
+
+    $this->patchJson("/api/v1/rider-app/rides/{$trip->id}/passengers/{$pending->id}/remove")
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('status');
+});
+
+test('removing a no-show after departure completes the ride once everyone else is dropped off', function () {
+    $trip = postRide($this);
+    $rider = bookSeats($this, $trip, $this->customer);
+    $noShow = bookSeats($this, $trip, User::factory()->create());
+    approveBooking($this, $rider);
+    approveBooking($this, $noShow);
+
+    Sanctum::actingAs($this->driver);
+    $this->patchJson("/api/v1/rider-app/rides/{$trip->id}/start")->assertOk();
+    $this->patchJson("/api/v1/rider-app/rides/{$trip->id}/passengers/{$rider->id}/pickup")->assertOk();
+    $this->patchJson("/api/v1/rider-app/rides/{$trip->id}/passengers/{$rider->id}/dropoff")->assertOk();
+
+    expect($trip->fresh()->status)->toBe('in_progress');
+
+    $this->patchJson("/api/v1/rider-app/rides/{$trip->id}/passengers/{$noShow->id}/remove")->assertOk();
+
+    expect($trip->fresh()->status)->toBe('completed')
+        ->and($noShow->fresh()->status)->toBe('cancelled')
+        ->and($this->driver->riderProfile->fresh()->availability_status)->toBe('online');
 });

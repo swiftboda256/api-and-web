@@ -1,6 +1,7 @@
 <?php
 
 use App\Console\Commands\DispatchScheduledTrips;
+use App\Console\Commands\ExpirePostedRideRequests;
 use App\Console\Commands\ExpireRideShareJoinRequests;
 use App\Console\Commands\ResolvePendingTransactions;
 use Illuminate\Foundation\Inspiring;
@@ -14,3 +15,4 @@ Artisan::command('inspire', function () {
 Schedule::command(DispatchScheduledTrips::class)->everyMinute()->withoutOverlapping();
 Schedule::command(ResolvePendingTransactions::class)->everyTwoSeconds()->withoutOverlapping();
 Schedule::command(ExpireRideShareJoinRequests::class)->everyFiveSeconds()->withoutOverlapping();
+Schedule::command(ExpirePostedRideRequests::class)->everyMinute()->withoutOverlapping();

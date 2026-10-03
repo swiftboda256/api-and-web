@@ -115,6 +115,16 @@ class RideController extends Controller
         return self::success(null, 'Passenger declined.');
     }
 
+    public function removePassenger(CancelRideRequest $request, int $trip, int $passenger, RiderTripService $riderTripService): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $removed = $riderTripService->removePassenger($user, $trip, $passenger, $request->validated('cancellation_reason_id'));
+
+        return self::success(new RidePassengerResource($removed), 'Passenger removed.');
+    }
+
     public function pickUpPassenger(Request $request, int $trip, int $passenger, RiderTripService $riderTripService): JsonResponse
     {
         /** @var User $user */

@@ -24,6 +24,9 @@ class ExpireRideShareJoinRequests extends Command
         TripPassenger::query()
             ->where('status', 'pending_approval')
             ->whereNotNull('request_expires_at')
+            // Posted-ride requests expire through ExpirePostedRideRequests -- they're never
+            // re-offered, and their trip is 'open' rather than 'in_progress' while pending.
+            ->whereHas('trip', fn ($query) => $query->where('type', 'ride_share'))
             ->where(fn ($query) => $query
                 ->where('request_expires_at', '<=', now())
                 ->orWhereHas('trip', fn ($query) => $query->where('status', '!=', 'in_progress')))

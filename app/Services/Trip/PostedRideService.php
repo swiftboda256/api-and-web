@@ -25,7 +25,8 @@ use Throwable;
  * Posted rides: the driver posts a fixed origin -> destination trip for a set date at their
  * own per-seat fare; customers browse open ones and request seats, which the driver
  * approves or declines. Requested seats are held from the moment of booking, so approving
- * can never overbook. Every booking boards at the trip's origin and alights at its
+ * can never overbook; a request the driver doesn't answer in time expires (expire()) so
+ * the seats aren't held forever. Every booking boards at the trip's origin and alights at its
  * destination, so its stops and fare are copied straight from the trip.
  *
  * Once the driver starts the trip it runs like a ride-share trip -- pickUpPassenger/
@@ -163,7 +164,8 @@ readonly class PostedRideService
     /**
      * Requests seats on an open posted ride. The seats are held straight away; the
      * passenger stays 'pending_approval' (stops off the route, no sequence) until the
-     * driver approves.
+     * driver approves, or until request_expires_at -- the configured timeout, but never
+     * later than departure.
      *
      * @param  array<string, mixed>  $data
      */
@@ -184,7 +186,9 @@ readonly class PostedRideService
             ]);
         }
 
-        $passenger = DB::transaction(function () use ($user, $trip, $seats, $data): TripPassenger {
+        $expiresAt = now()->addMinutes((int) Configuration::get('posted_ride_request_timeout_minutes', 60))->min($trip->departs_at);
+
+        $passenger = DB::transaction(function () use ($user, $trip, $seats, $data, $expiresAt): TripPassenger {
             $claimed = Trip::query()
                 ->where('id', $trip->id)
                 ->where('status', 'open')
@@ -206,6 +210,7 @@ readonly class PostedRideService
                 'distance_km' => $trip->route_distance_km,
                 'duration_minutes' => $trip->route_duration_minutes,
                 'requested_at' => now(),
+                'request_expires_at' => $expiresAt,
             ]);
 
             foreach ([
@@ -273,7 +278,13 @@ readonly class PostedRideService
                 ]);
             }
 
-            $passenger->update(['status' => 'matched', 'matched_at' => now()]);
+            if ($passenger->request_expires_at?->isPast()) {
+                throw ValidationException::withMessages([
+                    'status' => 'This request has expired.',
+                ]);
+            }
+
+            $passenger->update(['status' => 'matched', 'matched_at' => now(), 'request_expires_at' => null]);
             $trip->increment('passenger_count');
 
             $this->resequenceRoute($trip);
@@ -286,7 +297,7 @@ readonly class PostedRideService
             $approved->customer,
             'Booking approved',
             'Your driver approved your seat booking.',
-            ['trip_id' => (string) $approved->trip_id, 'trip_passenger_id' => (string) $approved->id, 'status' => 'matched'],
+            ['type' => 'posted_ride_booking_approved', 'trip_id' => (string) $approved->trip_id, 'trip_passenger_id' => (string) $approved->id, 'status' => 'matched'],
         );
 
         return $approved;
@@ -305,7 +316,24 @@ readonly class PostedRideService
                 $passenger->customer,
                 'Booking declined',
                 'The driver declined your seat booking.',
-                ['trip_id' => (string) $passenger->trip_id, 'trip_passenger_id' => (string) $passenger->id, 'status' => 'cancelled'],
+                ['type' => 'posted_ride_booking_declined', 'trip_id' => (string) $passenger->trip_id, 'trip_passenger_id' => (string) $passenger->id, 'status' => 'cancelled'],
+            );
+        }
+    }
+
+    /**
+     * A request the driver didn't answer before request_expires_at: cancelled (by no one)
+     * and its seats released, so the ride can take other bookings.
+     */
+    public function expire(TripPassenger $passenger): void
+    {
+        if ($this->cancelPending($passenger, null, null)) {
+            $passenger->load('customer.devices');
+            $this->notify(
+                $passenger->customer,
+                'Booking request expired',
+                'The driver did not respond to your seat booking in time. You can book another ride.',
+                ['type' => 'posted_ride_booking_expired', 'trip_id' => (string) $passenger->trip_id, 'trip_passenger_id' => (string) $passenger->id, 'status' => 'cancelled'],
             );
         }
     }
@@ -322,23 +350,52 @@ readonly class PostedRideService
             return;
         }
 
-        DB::transaction(function () use ($passenger, $user, $cancellationReasonId): void {
-            $passenger->update([
-                'status' => 'cancelled',
-                'cancelled_at' => now(),
-                'cancelled_by' => $user->id,
-                'cancellation_reason_id' => $cancellationReasonId,
-            ]);
+        DB::transaction(fn () => $this->cancelConfirmed($passenger, $user, $cancellationReasonId));
+    }
 
-            $passenger->stops()->whereNull('arrived_at')->update(['sequence' => null]);
+    /**
+     * The driver removes an approved passenger who hasn't been picked up -- a no-show, or
+     * someone who doesn't match the booking -- with one of the rider cancellation reasons.
+     * The booking is cancelled at no charge and its seats go back, so while the ride is
+     * still open it reappears in search for new bookings.
+     */
+    public function removePassenger(TripPassenger $passenger, User $driver, ?int $cancellationReasonId): TripPassenger
+    {
+        $removed = DB::transaction(function () use ($passenger, $driver, $cancellationReasonId): TripPassenger {
+            $passenger = TripPassenger::query()->lockForUpdate()->with('trip')->findOrFail($passenger->id);
 
-            $trip = $passenger->trip;
-
-            if (in_array($trip->status, ['open', 'in_progress'], true)) {
-                $trip->increment('available_seats', $passenger->seats_requested);
-                $trip->decrement('passenger_count');
+            if (! in_array($passenger->status, ['matched', 'arrived_pickup'], true)) {
+                throw ValidationException::withMessages([
+                    'status' => 'Only approved passengers who have not been picked up can be removed.',
+                ]);
             }
+
+            if (! in_array($passenger->trip->status, ['open', 'in_progress'], true)) {
+                throw ValidationException::withMessages([
+                    'trip' => 'Passengers can no longer be removed from this ride.',
+                ]);
+            }
+
+            $this->cancelConfirmed($passenger, $driver, $cancellationReasonId);
+
+            return $passenger;
         });
+
+        $removed->load(['customer.devices', 'cancellationReason']);
+        $this->notify(
+            $removed->customer,
+            'Removed from ride',
+            'The driver removed you from the ride you booked. You have not been charged.',
+            [
+                'type' => 'posted_ride_passenger_removed',
+                'trip_id' => (string) $removed->trip_id,
+                'trip_passenger_id' => (string) $removed->id,
+                'status' => 'cancelled',
+                'cancellation_reason' => (string) $removed->cancellationReason?->label,
+            ],
+        );
+
+        return $removed;
     }
 
     /**
@@ -385,7 +442,7 @@ readonly class PostedRideService
                 $passenger->customer,
                 'Ride cancelled',
                 'The driver cancelled the ride you booked.',
-                ['trip_id' => (string) $trip->id, 'trip_passenger_id' => (string) $passenger->id, 'status' => 'cancelled'],
+                ['type' => 'posted_ride_cancelled', 'trip_id' => (string) $trip->id, 'trip_passenger_id' => (string) $passenger->id, 'status' => 'cancelled'],
             );
         }
     }
@@ -394,7 +451,7 @@ readonly class PostedRideService
      * False when the request was no longer pending (e.g. the customer cancelled just as the
      * driver declined), so its seats aren't returned twice.
      */
-    private function cancelPending(TripPassenger $passenger, User $by, ?int $cancellationReasonId): bool
+    private function cancelPending(TripPassenger $passenger, ?User $by, ?int $cancellationReasonId): bool
     {
         return DB::transaction(function () use ($passenger, $by, $cancellationReasonId): bool {
             $locked = TripPassenger::query()->lockForUpdate()->findOrFail($passenger->id);
@@ -406,14 +463,38 @@ readonly class PostedRideService
             $locked->update([
                 'status' => 'cancelled',
                 'cancelled_at' => now(),
-                'cancelled_by' => $by->id,
+                'cancelled_by' => $by?->id,
                 'cancellation_reason_id' => $cancellationReasonId,
+                'request_expires_at' => null,
             ]);
 
             Trip::query()->where('id', $locked->trip_id)->increment('available_seats', $locked->seats_requested);
 
             return true;
         });
+    }
+
+    /**
+     * Cancels an approved booking (by the customer or the driver): its unvisited stops come
+     * off the route and its seats go back to the ride. Callers wrap it in a transaction.
+     */
+    private function cancelConfirmed(TripPassenger $passenger, User $by, ?int $cancellationReasonId): void
+    {
+        $passenger->update([
+            'status' => 'cancelled',
+            'cancelled_at' => now(),
+            'cancelled_by' => $by->id,
+            'cancellation_reason_id' => $cancellationReasonId,
+        ]);
+
+        $passenger->stops()->whereNull('arrived_at')->update(['sequence' => null]);
+
+        $trip = $passenger->trip;
+
+        if (in_array($trip->status, ['open', 'in_progress'], true)) {
+            $trip->increment('available_seats', $passenger->seats_requested);
+            $trip->decrement('passenger_count');
+        }
     }
 
     /**
@@ -458,11 +539,12 @@ readonly class PostedRideService
             return;
         }
 
-        $this->notify($driver, 'New seat booking', 'A passenger wants to book seats on your posted ride. Approve or decline the request.', [
+        $this->notify($driver, 'New seat booking', 'A passenger wants to book seats on your posted ride. Approve or decline before the request expires.', [
             'type' => 'posted_ride_booking_request',
             'trip_id' => (string) $trip->id,
             'trip_passenger_id' => (string) $passenger->id,
             'seats_requested' => (string) $passenger->seats_requested,
+            'expires_at' => (string) $passenger->request_expires_at?->toIso8601String(),
         ]);
     }
 
