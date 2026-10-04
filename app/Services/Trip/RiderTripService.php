@@ -559,7 +559,7 @@ readonly class RiderTripService
 
             if ($commissionAmount > 0 && $balanceAfter < $minimumBalance) {
                 throw ValidationException::withMessages([
-                    'wallet' => 'Your wallet balance is too low to cover the commission on this trip. Please top up your wallet.',
+                    'wallet' => 'You have outstanding cash settlements. Please top up your wallet to clear them.',
                 ]);
             }
 
