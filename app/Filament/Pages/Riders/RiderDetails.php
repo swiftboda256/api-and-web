@@ -179,6 +179,7 @@ class RiderDetails extends Page
 
         return Transaction::query()
             ->where('user_id', $this->recordId)
+            ->with('user')
             ->when($search !== '', fn ($query) => $query->where('gateway_reference', 'ilike', "%{$search}%"))
             ->when($this->transactionsType !== '', fn ($query) => $query->where('transaction_type', $this->transactionsType))
             ->when($this->transactionsMethod !== '', fn ($query) => $query->where('method', $this->transactionsMethod))
