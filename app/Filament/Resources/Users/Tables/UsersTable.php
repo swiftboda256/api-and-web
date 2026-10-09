@@ -86,6 +86,15 @@ class UsersTable
                 SelectFilter::make('roles')
                     ->relationship('roles', 'name')
                     ->multiple(),
+                SelectFilter::make('status')
+                    ->options([
+                        'active' => 'Active',
+                        'suspended' => 'Suspended',
+                        'banned' => 'Banned',
+                        'requested_delete' => 'Requested delete',
+                        'deleted' => 'Deleted',
+                    ])
+                    ->multiple(),
                 TrashedFilter::make(),
             ])
             ->recordActions([
@@ -111,17 +120,31 @@ class UsersTable
                         ->icon(Heroicon::OutlinedPauseCircle)
                         ->color('warning')
                         ->requiresConfirmation()
-                        ->modalDescription('The user will be unable to log in or use the app while suspended.')
+                        ->modalDescription('The user will be logged out of all devices and unable to log in while suspended.')
                         ->visible(fn (User $record): bool => $record->status === 'active')
-                        ->action(fn (User $record) => $record->update(['status' => 'suspended'])),
-                    Action::make('ban')
-                        ->label('Ban')
-                        ->icon(Heroicon::OutlinedNoSymbol)
-                        ->color('danger')
+                        ->action(function (User $record, UserAccountService $userAccountService): void {
+                            $userAccountService->suspend($record);
+
+                            Notification::make()
+                                ->title('User suspended')
+                                ->success()
+                                ->send();
+                        }),
+                    Action::make('unsuspend')
+                        ->label('Unsuspend')
+                        ->icon(Heroicon::OutlinedPlayCircle)
+                        ->color('success')
                         ->requiresConfirmation()
-                        ->modalDescription('This is a hard block — the user will no longer be able to log in at all. Use this only for confirmed policy violations.')
-                        ->visible(fn (User $record): bool => $record->status !== 'banned')
-                        ->action(fn (User $record) => $record->update(['status' => 'banned', 'allow_login' => false])),
+                        ->modalDescription('The user will be able to log in and use the app again.')
+                        ->visible(fn (User $record): bool => $record->status === 'suspended')
+                        ->action(function (User $record, UserAccountService $userAccountService): void {
+                            $userAccountService->unsuspend($record);
+
+                            Notification::make()
+                                ->title('User unsuspended')
+                                ->success()
+                                ->send();
+                        }),
                     Action::make('delete')
                         ->label('Delete')
                         ->icon(Heroicon::OutlinedTrash)
@@ -151,6 +174,29 @@ class UsersTable
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
+                    BulkAction::make('suspend')
+                        ->label('Suspend')
+                        ->icon(Heroicon::OutlinedPauseCircle)
+                        ->color('warning')
+                        ->requiresConfirmation()
+                        ->modalDescription('Each selected user will be logged out of all devices and unable to log in while suspended. Users who are not active will be skipped.')
+                        ->action(function (Collection $records, UserAccountService $userAccountService): void {
+                            $activeRecords = $records->where('status', 'active');
+
+                            foreach ($activeRecords as $record) {
+                                $userAccountService->suspend($record);
+                            }
+
+                            $skipped = $records->count() - $activeRecords->count();
+
+                            Notification::make()
+                                ->title($skipped > 0
+                                    ? "Users suspended, {$skipped} skipped (not active)"
+                                    : 'Users suspended')
+                                ->success()
+                                ->send();
+                        })
+                        ->deselectRecordsAfterCompletion(),
                     BulkAction::make('delete')
                         ->label('Delete')
                         ->icon(Heroicon::OutlinedTrash)
@@ -172,8 +218,8 @@ class UsersTable
                                 ->send();
                         })
                         ->deselectRecordsAfterCompletion(),
-//                    ForceDeleteBulkAction::make(),
-//                    RestoreBulkAction::make(),
+                    //                    ForceDeleteBulkAction::make(),
+                    //                    RestoreBulkAction::make(),
                 ]),
             ]);
     }

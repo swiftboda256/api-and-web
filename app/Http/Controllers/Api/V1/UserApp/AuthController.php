@@ -8,6 +8,7 @@ use App\Http\Requests\Api\V1\UserApp\Auth\VerifyOtpRequest;
 use App\Http\Resources\Api\V1\UserApp\UserResource;
 use App\Models\User;
 use App\Services\Auth\OtpService;
+use App\Services\Auth\UserAccountService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -19,16 +20,18 @@ class AuthController extends Controller
 
     private const string AUTOCOMPLETE_CODE = 'Ll+AXn9t118';
 
-    public function login(RequestOtpRequest $request, OtpService $otpService): JsonResponse
+    public function login(RequestOtpRequest $request, OtpService $otpService, UserAccountService $userAccountService): JsonResponse
     {
         $phone = $request->string('phone')->toString();
+
+        $userAccountService->ensureNotSuspended($phone);
 
         $otpService->generateOTP($phone, null, self::OTP_CHANNEL, self::PURPOSE, self::AUTOCOMPLETE_CODE);
 
         return self::success(null, 'OTP has been sent');
     }
 
-    public function verifyOtp(VerifyOtpRequest $request, OtpService $otpService): JsonResponse
+    public function verifyOtp(VerifyOtpRequest $request, OtpService $otpService, UserAccountService $userAccountService): JsonResponse
     {
         $phone = $request->string('phone')->toString();
         $code = $request->string('code')->toString();
@@ -36,6 +39,8 @@ class AuthController extends Controller
         $device_type = $request->string('device_type');
         $fcm_token = $request->string('fcm_token');
         $app_version = $request->input('app_version');
+
+        $userAccountService->ensureNotSuspended($phone);
 
         $otpService->verify($phone, $code, self::PURPOSE);
 

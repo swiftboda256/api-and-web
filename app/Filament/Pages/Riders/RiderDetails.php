@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Models\UserDevice;
 use App\Models\VehicleModel;
 use App\Models\VehicleType;
+use App\Services\Auth\UserAccountService;
 use App\Services\Rider\RiderKycService;
 use BezhanSalleh\FilamentShield\Traits\HasPageShield;
 use Filament\Notifications\Notification;
@@ -480,16 +481,16 @@ class RiderDetails extends Page
         Notification::make()->title('Rider logged out of all devices')->success()->send();
     }
 
-    public function suspendAccount(): void
+    public function suspendAccount(UserAccountService $userAccountService): void
     {
-        $this->rider()->update(['status' => 'suspended']);
+        $userAccountService->suspend($this->rider());
 
         Notification::make()->title('Account suspended')->success()->send();
     }
 
-    public function reactivateAccount(): void
+    public function reactivateAccount(UserAccountService $userAccountService): void
     {
-        $this->rider()->update(['status' => 'active']);
+        $userAccountService->unsuspend($this->rider());
 
         Notification::make()->title('Account reactivated')->success()->send();
     }

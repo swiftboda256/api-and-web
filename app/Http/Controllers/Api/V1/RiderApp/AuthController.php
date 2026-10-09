@@ -10,6 +10,7 @@ use App\Models\RiderProfile;
 use App\Models\User;
 use App\Models\Zone;
 use App\Services\Auth\OtpService;
+use App\Services\Auth\UserAccountService;
 use App\Services\Rider\RiderProfileService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,16 +23,18 @@ class AuthController extends Controller
 
     private const string AUTOCOMPLETE_CODE = 'YTeFR1MDdMK';
 
-    public function login(RequestOtpRequest $request, OtpService $otpService): JsonResponse
+    public function login(RequestOtpRequest $request, OtpService $otpService, UserAccountService $userAccountService): JsonResponse
     {
         $phone = $request->string('phone')->toString();
+
+        $userAccountService->ensureNotSuspended($phone);
 
         $otpService->generateOTP($phone, null, self::OTP_CHANNEL, self::PURPOSE, self::AUTOCOMPLETE_CODE);
 
         return self::success(null, 'OTP has been sent');
     }
 
-    public function verifyOtp(VerifyOtpRequest $request, OtpService $otpService, RiderProfileService $riderProfileService): JsonResponse
+    public function verifyOtp(VerifyOtpRequest $request, OtpService $otpService, UserAccountService $userAccountService, RiderProfileService $riderProfileService): JsonResponse
     {
         $phone = $request->string('phone')->toString();
         $code = $request->string('code')->toString();
@@ -39,6 +42,8 @@ class AuthController extends Controller
         $device_type = $request->string('device_type');
         $fcm_token = $request->string('fcm_token');
         $app_version = $request->input('app_version');
+
+        $userAccountService->ensureNotSuspended($phone);
 
         $otpService->verify($phone, $code, self::PURPOSE);
 
@@ -98,5 +103,4 @@ class AuthController extends Controller
 
         return self::success();
     }
-
 }

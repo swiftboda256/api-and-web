@@ -41,7 +41,7 @@ class UserAccountService
         });
 
         if (filled($user->email)) {
-            $user->notify(new AccountDeletionRequestedNotification());
+            $user->notify(new AccountDeletionRequestedNotification);
         }
 
         ProcessAccountDeletionJob::dispatch($deleteRequest->id);
@@ -121,6 +121,39 @@ class UserAccountService
         }
 
         return $existingDeleteRequests->merge($deleteRequests);
+    }
+
+    /**
+     * Suspends the user and revokes every API token and web session so they are
+     * signed out immediately.
+     */
+    public function suspend(User $user): void
+    {
+        DB::transaction(function () use ($user): void {
+            $user->update(['status' => 'suspended']);
+
+            $user->tokens()->delete();
+            DB::table('sessions')->where('user_id', $user->id)->delete();
+        });
+    }
+
+    public function unsuspend(User $user): void
+    {
+        $user->update(['status' => 'active']);
+    }
+
+    public function ensureNotSuspended(string $phone): void
+    {
+        $isSuspended = User::query()
+            ->where('phone', $phone)
+            ->where('status', 'suspended')
+            ->exists();
+
+        if ($isSuspended) {
+            throw ValidationException::withMessages([
+                'phone' => 'Your account has been suspended. Please contact support.',
+            ]);
+        }
     }
 
     public function ensureNoActiveTrip(User $user): void
