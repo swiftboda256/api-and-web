@@ -70,6 +70,7 @@
                     <tr>
                         <th class="py-2 pr-4 font-medium">Reference</th>
                         <th class="py-2 pr-4 font-medium">User</th>
+                        <th class="py-2 pr-4 font-medium">Phone</th>
                         <th class="py-2 pr-4 font-medium">Type</th>
                         <th class="py-2 pr-4 font-medium">Direction</th>
                         <th class="py-2 pr-4 font-medium">Amount</th>
@@ -90,6 +91,7 @@
                         <tr wire:key="transaction-{{ $transaction->id }}">
                             <td class="py-2 pr-4">{{ $transaction->gateway_reference }}</td>
                             <td class="py-2 pr-4 text-gray-700 dark:text-gray-300">{{ filled($transaction->user?->name) ? $transaction->user->name : '—' }}</td>
+                            <td class="py-2 pr-4 text-gray-700 dark:text-gray-300">{{ $transaction->phone ?? '—' }}</td>
                             <td class="py-2 pr-4 text-gray-950 dark:text-white">{{ str($transaction->transaction_type)->headline() }}</td>
                             <td class="py-2 pr-4">
                                 <span class="{{ $transaction->direction === 'credit' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400' }}">
