@@ -119,5 +119,25 @@ class ConfigurationSeeder extends Seeder
                 'is_public' => false,
             ],
         );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'wallet_daily_topup_limit'],
+            [
+                'value' => 10000,
+                'group' => 'wallet',
+                'description' => 'Maximum total amount (UGX) a user can top up into their wallet per day. Pending and completed top-ups count towards it.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'wallet_daily_withdrawal_limit'],
+            [
+                'value' => 10000,
+                'group' => 'wallet',
+                'description' => 'Maximum total amount (UGX, excluding charges) a user can withdraw from their wallet per day. Processing and completed withdrawals count towards it.',
+                'is_public' => false,
+            ],
+        );
     }
 }

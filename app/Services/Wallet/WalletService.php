@@ -2,6 +2,7 @@
 
 namespace App\Services\Wallet;
 
+use App\Models\Configuration;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Models\Wallet;
@@ -21,6 +22,8 @@ readonly class WalletService
     private const string PIN_RESET_CHANNEL = 'sms';
 
     private const string PIN_RESET_PURPOSE = 'wallet_pin_reset';
+
+    private const float DEFAULT_DAILY_LIMIT = 10000;
 
     public function __construct(
         private PaymentGateway $paymentGateway,
@@ -114,9 +117,21 @@ readonly class WalletService
         }
 
         return DB::transaction(function () use ($user, $wallet, $data): Transaction {
+            // Lock the wallet so concurrent top-ups can't both pass the daily limit check.
+            $wallet = Wallet::query()->whereKey($wallet->id)->lockForUpdate()->first();
+
             $reference = (string) Str::uuid();
             $phone = $data['phone'] ?? $user->phone;
             $amount = (float) $data['amount'];
+
+            $toppedUpToday = (float) Transaction::query()
+                ->where('user_id', $user->id)
+                ->where('transaction_type', 'topup')
+                ->whereIn('status', ['pending', 'completed'])
+                ->where('created_at', '>=', now()->startOfDay())
+                ->sum('amount');
+
+            $this->ensureWithinDailyLimit('wallet_daily_topup_limit', $toppedUpToday, $amount, 'top-up', 'top up');
 
             $result = $this->paymentGateway->collectFromMobileMoney($phone, $amount, $wallet->currency_code, $reference, 'Wallet top-up');
 
@@ -198,6 +213,15 @@ readonly class WalletService
         return DB::transaction(function () use ($user, $wallet, $data, $amount, $charge, $baseCharge, $isMobileMoney, $walletDebit): WithdrawalRequest {
             // Check the balance under a row lock so concurrent withdrawals can't both pass.
             $wallet = Wallet::query()->whereKey($wallet->id)->lockForUpdate()->first();
+
+            // Counts the requested amount (excluding charges) of today's non-rejected withdrawals.
+            $withdrawnToday = (float) WithdrawalRequest::query()
+                ->where('user_id', $user->id)
+                ->where('status', '!=', 'rejected')
+                ->where('created_at', '>=', now()->startOfDay())
+                ->sum('amount');
+
+            $this->ensureWithinDailyLimit('wallet_daily_withdrawal_limit', $withdrawnToday, $amount, 'withdrawal', 'withdraw');
 
             if ($walletDebit > (float) $wallet->balance) {
                 throw ValidationException::withMessages([
@@ -323,6 +347,23 @@ readonly class WalletService
             ->orderByDesc('created_at');
 
         return $query->paginate((int) ($filters['per_page'] ?? 15));
+    }
+
+    private function ensureWithinDailyLimit(string $configurationKey, float $usedToday, float $amount, string $noun, string $verb): void
+    {
+        $limit = (float) Configuration::get($configurationKey, self::DEFAULT_DAILY_LIMIT);
+
+        if (round($usedToday + $amount, 2) <= $limit) {
+            return;
+        }
+
+        $remaining = max($limit - $usedToday, 0);
+
+        throw ValidationException::withMessages([
+            'amount' => $remaining > 0
+                ? 'This exceeds your daily '.$noun.' limit of UGX '.number_format($limit).'. You can '.$verb.' UGX '.number_format($remaining).' more today.'
+                : 'You have reached your daily '.$noun.' limit of UGX '.number_format($limit).'. Please try again tomorrow.',
+        ]);
     }
 
     /**
