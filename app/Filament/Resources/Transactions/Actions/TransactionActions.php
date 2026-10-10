@@ -5,11 +5,15 @@ namespace App\Filament\Resources\Transactions\Actions;
 use App\Jobs\ResolvePendingTransactionJob;
 use App\Models\Transaction;
 use App\Services\Payment\Constants\MobileMoneyTransactionStatus;
+use App\Services\Wallet\TransactionReversalService;
 use App\Services\Wallet\TransactionService;
 use Filament\Actions\Action;
+use Filament\Forms\Components\Radio;
 use Filament\Forms\Components\Textarea;
 use Filament\Notifications\Notification;
 use Filament\Support\Icons\Heroicon;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Record actions shared by the transactions table and the transaction details page.
@@ -20,7 +24,7 @@ class TransactionActions
      * Only these types are resolved by TransactionService::resolvePendingTransaction();
      * any other type would be a silent no-op there.
      */
-    private const array RESOLVABLE_TYPES = ['topup', 'trip_payment', 'withdrawal'];
+    private const array RESOLVABLE_TYPES = ['topup', 'trip_payment', 'withdrawal', 'reversal'];
 
     public static function checkStatus(): Action
     {
@@ -52,37 +56,68 @@ class TransactionActions
             });
     }
 
-    public static function cancel(): Action
+    public static function reverse(): Action
     {
-        return Action::make('cancel')
-            ->label('Cancel')
-            ->icon(Heroicon::OutlinedXCircle)
+        return Action::make('reverse')
+            ->label('Reverse')
+            ->icon(Heroicon::OutlinedArrowUturnLeft)
             ->color('danger')
-            ->requiresConfirmation()
-            ->modalHeading('Cancel transaction')
-            ->modalDescription('This marks the transaction as failed and runs the usual failure handling (e.g. a withdrawal is refunded to the wallet). It does not stop a payment the gateway is still processing — check its status first.')
-            ->schema([
+            ->modalHeading('Reverse transaction')
+            ->modalDescription(fn (Transaction $record): string => match ($record->transaction_type) {
+                'topup' => 'The amount will be debited from the user\'s wallet and sent back to the mobile-money number that paid. This cannot be undone.',
+                default => $record->method === 'mobile_money'
+                    ? 'The payout will be debited from the rider\'s wallet, the commission voided, and the full fare sent back to the customer\'s mobile-money number. This cannot be undone.'
+                    : 'The payout will be debited from the rider\'s wallet, the commission voided, and the full fare credited back to the customer\'s wallet. This cannot be undone.',
+            })
+            ->modalSubmitActionLabel('Reverse')
+            ->schema(fn (Transaction $record): array => array_values(array_filter([
                 Textarea::make('reason')
-                    ->label('Reason')
-                    ->placeholder('Cancelled by admin.')
+                    ->label('Reason for reversal')
+                    ->required()
                     ->maxLength(255),
-            ])
-            ->visible(fn (Transaction $record): bool => $record->status === 'pending'
-                && in_array($record->transaction_type, self::RESOLVABLE_TYPES, true))
-            ->action(function (Transaction $record, array $data, TransactionService $transactionService): void {
-                $transactionService->resolvePendingTransaction(
-                    $record->id,
-                    succeeded: false,
-                    networkReference: null,
-                    failureReason: filled($data['reason'] ?? null) ? $data['reason'] : 'Cancelled by admin.',
-                );
+                // Wallet reversals have no disbursement, so no charges to choose.
+                $record->method === 'mobile_money'
+                    ? Radio::make('charges')
+                        ->label('Disbursement charges')
+                        ->options([
+                            'with' => 'With charges',
+                            'minus' => 'Minus charges',
+                        ])
+                        ->descriptions([
+                            'with' => 'The company pays the charges; the payer receives the full amount.',
+                            'minus' => 'The network charge is deducted from the amount the payer receives.',
+                        ])
+                        ->default('with')
+                        ->required()
+                    : null,
+            ])))
+            ->visible(fn (Transaction $record): bool => (Auth::user()?->can('update', $record) ?? false)
+                && app(TransactionReversalService::class)->isReversible($record))
+            ->action(function (Transaction $record, array $data, TransactionReversalService $transactionReversalService): void {
+                try {
+                    $reversal = $transactionReversalService->reverse(
+                        $record,
+                        reason: $data['reason'],
+                        absorbCharges: ($data['charges'] ?? 'with') === 'with',
+                    );
+                } catch (ValidationException $exception) {
+                    Notification::make()
+                        ->title('Unable to reverse transaction')
+                        ->body(collect($exception->errors())->flatten()->first())
+                        ->danger()
+                        ->send();
 
-                $record->refresh();
+                    return;
+                }
 
-                Notification::make()
-                    ->title($record->status === 'failed' ? 'Transaction cancelled' : 'Transaction was already resolved')
-                    ->success()
-                    ->send();
+                $notification = $reversal->status === 'completed'
+                    ? Notification::make()->title('Transaction reversed')->success()
+                    : Notification::make()
+                        ->title('Reversal initiated')
+                        ->body('The disbursement is awaiting confirmation from the gateway. Use "Check status" on the reversal transaction to follow up.')
+                        ->warning();
+
+                $notification->send();
             });
     }
 }

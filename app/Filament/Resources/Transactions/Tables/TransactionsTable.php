@@ -62,6 +62,7 @@ class TransactionsTable
                         'completed' => 'success',
                         'pending' => 'warning',
                         'failed' => 'danger',
+                        'reversed' => 'info',
                         default => 'gray',
                     })
                     ->formatStateUsing(fn (string $state): string => str($state)->headline()),
@@ -102,6 +103,8 @@ class TransactionsTable
                         'commission' => 'Commission',
                         'promo_credit' => 'Promo credit',
                         'adjustment' => 'Adjustment',
+                        'reversal' => 'Reversal',
+                        'reversal_charge' => 'Reversal charge',
                     ]),
                 SelectFilter::make('status')
                     ->options([

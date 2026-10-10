@@ -13,6 +13,10 @@ use Illuminate\Support\Facades\Log;
 
 readonly class TransactionService
 {
+    public function __construct(
+        private TransactionReversalService $transactionReversalService,
+    ) {}
+
     /**
      * Verifies and resolves a Yo! Instant Payment Notification (docs section
      * 6.3). Always a no-op on invalid signature, a missing external reference,
@@ -96,8 +100,8 @@ readonly class TransactionService
      * (already resolved by whichever of those three got there first).
      *
      * Dispatches to one processing method per transaction type — these are
-     * the only three transaction types ever created with a gateway/external
-     * reference, so the only three an IPN or failure notification can match.
+     * the only transaction types ever created with a gateway/external
+     * reference, so the only ones an IPN or failure notification can match.
      */
     public function resolvePendingTransaction(int $transactionId, bool $succeeded, ?string $networkReference, ?string $failureReason): void
     {
@@ -112,6 +116,7 @@ readonly class TransactionService
                 'topup' => $this->processTopUp($transaction, $succeeded, $networkReference, $failureReason),
                 'trip_payment' => $this->processTripPayment($transaction, $succeeded, $networkReference, $failureReason),
                 'withdrawal' => $this->processWithdrawal($transaction, $succeeded, $networkReference, $failureReason),
+                'reversal' => $this->transactionReversalService->resolvePending($transaction, $succeeded, $networkReference, $failureReason),
                 default => Log::warning('yo.unhandled_transaction_type', ['transaction_id' => $transaction->id, 'transaction_type' => $transaction->transaction_type]),
             };
         });

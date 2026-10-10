@@ -9,7 +9,7 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
 #[Signature('transactions:resolve-pending')]
-#[Description('Poll the gateway for still-pending top-up/trip-payment/withdrawal transactions and resolve them')]
+#[Description('Poll the gateway for still-pending withdrawal/reversal disbursements and resolve them')]
 class ResolvePendingTransactions extends Command
 {
     public function handle(): int
@@ -19,7 +19,7 @@ class ResolvePendingTransactions extends Command
         Transaction::query()
             ->where('status', 'pending')
             ->whereNotNull('gateway_reference')
-            ->whereIn('transaction_type', ['withdrawal'])
+            ->whereIn('transaction_type', ['withdrawal', 'reversal'])
             ->select('id')
             ->chunkById(100, function ($transactions) use (&$count): void {
                 foreach ($transactions as $transaction) {
