@@ -12,7 +12,6 @@ use Filament\Forms\Components\Radio;
 use Filament\Forms\Components\Textarea;
 use Filament\Notifications\Notification;
 use Filament\Support\Icons\Heroicon;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -91,8 +90,9 @@ class TransactionActions
                         ->required()
                     : null,
             ])))
-            ->visible(fn (Transaction $record): bool => (Auth::user()?->can('update', $record) ?? false)
-                && app(TransactionReversalService::class)->isReversible($record))
+            // TransactionPolicy::update -> Update:Transaction permission.
+            ->authorize('update')
+            ->visible(fn (Transaction $record): bool => app(TransactionReversalService::class)->isReversible($record))
             ->action(function (Transaction $record, array $data, TransactionReversalService $transactionReversalService): void {
                 try {
                     $reversal = $transactionReversalService->reverse(
