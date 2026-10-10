@@ -107,6 +107,10 @@ readonly class WalletService
     {
         $wallet = $this->getWallet($user);
 
+        if ($data['method'] === 'mobile_money') {
+            $this->ensureRegisteredPhone($user, $data['phone'] ?? $user->phone, 'phone', 'Top-ups can only be made from your registered phone number.');
+        }
+
         return DB::transaction(function () use ($user, $wallet, $data): Transaction {
             $reference = (string) Str::uuid();
             $phone = $data['phone'] ?? $user->phone;
@@ -161,6 +165,10 @@ readonly class WalletService
     {
         $wallet = $this->getWallet($user);
         $amount = (float) $data['amount'];
+
+        if ($data['channel'] === 'mobile_money') {
+            $this->ensureRegisteredPhone($user, $data['account_identifier'], 'account_identifier', 'Withdrawals can only be made to your registered phone number.');
+        }
 
         if (! $wallet->pin) {
             throw ValidationException::withMessages([
@@ -311,6 +319,30 @@ readonly class WalletService
             ->orderByDesc('created_at');
 
         return $query->paginate((int) ($filters['per_page'] ?? 15));
+    }
+
+    private function ensureRegisteredPhone(User $user, ?string $phone, string $field, string $message): void
+    {
+        $registeredPhone = $this->normalizePhone($user->phone);
+
+        if ($registeredPhone === '' || $this->normalizePhone($phone) !== $registeredPhone) {
+            throw ValidationException::withMessages([$field => $message]);
+        }
+    }
+
+    /**
+     * Reduces a Ugandan number in any common format (07..., 7..., 256..., +256...)
+     * to 256XXXXXXXXX so differently formatted copies of the same number match.
+     */
+    private function normalizePhone(?string $phone): string
+    {
+        $digits = preg_replace('/\D/', '', (string) $phone) ?? '';
+
+        return match (true) {
+            str_starts_with($digits, '0') => '256'.substr($digits, 1),
+            strlen($digits) === 9 => '256'.$digits,
+            default => $digits,
+        };
     }
 
     private function getWallet(User $user): Wallet
