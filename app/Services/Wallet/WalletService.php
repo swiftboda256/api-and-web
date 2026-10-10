@@ -105,6 +105,8 @@ readonly class WalletService
      */
     public function topUp(User $user, array $data): Transaction
     {
+        $this->ensureRiderKycApproved($user, 'top up your wallet');
+
         $wallet = $this->getWallet($user);
 
         if ($data['method'] === 'mobile_money') {
@@ -163,6 +165,8 @@ readonly class WalletService
      */
     public function withdraw(User $user, array $data): WithdrawalRequest
     {
+        $this->ensureRiderKycApproved($user, 'withdraw from your wallet');
+
         $wallet = $this->getWallet($user);
         $amount = (float) $data['amount'];
 
@@ -319,6 +323,20 @@ readonly class WalletService
             ->orderByDesc('created_at');
 
         return $query->paginate((int) ($filters['per_page'] ?? 15));
+    }
+
+    /**
+     * Customers have no rider profile and are unaffected.
+     */
+    private function ensureRiderKycApproved(User $user, string $action): void
+    {
+        $riderProfile = $user->riderProfile;
+
+        if ($riderProfile && $riderProfile->kyc_status !== 'approved') {
+            throw ValidationException::withMessages([
+                'kyc_status' => "Your account must be KYC-approved before you can {$action}.",
+            ]);
+        }
     }
 
     private function ensureRegisteredPhone(User $user, ?string $phone, string $field, string $message): void
