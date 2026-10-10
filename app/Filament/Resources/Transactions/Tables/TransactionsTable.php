@@ -123,6 +123,7 @@ class TransactionsTable
                 ActionGroup::make([
                     ViewAction::make(),
                     TransactionActions::checkStatus(),
+                    TransactionActions::reverse(),
                 ]),
             ]);
     }
