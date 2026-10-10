@@ -139,5 +139,25 @@ class ConfigurationSeeder extends Seeder
                 'is_public' => false,
             ],
         );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'wallet_topups_enabled'],
+            [
+                'value' => false,
+                'group' => 'wallet',
+                'description' => 'When false, all wallet top-ups are rejected with a "temporarily unavailable" error.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'wallet_withdrawals_enabled'],
+            [
+                'value' => false,
+                'group' => 'wallet',
+                'description' => 'When false, all wallet withdrawals are rejected with a "temporarily unavailable" error.',
+                'is_public' => false,
+            ],
+        );
     }
 }
