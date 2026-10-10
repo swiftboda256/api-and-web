@@ -19,6 +19,16 @@ readonly class RiderProfileService
     private const array DOCUMENT_TYPES = ['national_id', 'driving_license'];
 
     /**
+     * KYC detail fields and the document that backs each one. Changing a field
+     * sends its document back for review.
+     */
+    private const array KYC_FIELD_DOCUMENTS = [
+        'national_id_number' => 'national_id',
+        'license_number' => 'driving_license',
+        'license_expiry_at' => 'driving_license',
+    ];
+
+    /**
      * @param  array<string, mixed>  $data
      */
     public function updateProfile(User $user, array $data): User
@@ -59,6 +69,8 @@ readonly class RiderProfileService
                 $riderProfile->availability_status = $data['availability_status'];
             }
 
+            $kycDetailsChanged = $this->resetDocumentsForChangedKycDetails($riderProfile);
+
             $documentUploaded = false;
 
             foreach (self::DOCUMENT_TYPES as $type) {
@@ -68,7 +80,7 @@ readonly class RiderProfileService
                 }
             }
 
-            if ($documentUploaded) {
+            if ($documentUploaded || $kycDetailsChanged) {
                 $riderProfile->kyc_status = 'pending';
             }
 
@@ -136,6 +148,35 @@ readonly class RiderProfileService
         }
 
         return Storage::disk('public')->url($path);
+    }
+
+    /**
+     * KYC status is derived from document statuses (RiderKycService), so the
+     * documents behind changed details are reset to pending as well, otherwise
+     * the rider would sit in pending with nothing left for an admin to review.
+     */
+    private function resetDocumentsForChangedKycDetails(RiderProfile $riderProfile): bool
+    {
+        $documentTypes = collect(self::KYC_FIELD_DOCUMENTS)
+            ->filter(fn (string $documentType, string $field): bool => $riderProfile->isDirty($field))
+            ->unique()
+            ->values();
+
+        if ($documentTypes->isEmpty()) {
+            return false;
+        }
+
+        $riderProfile->documents()
+            ->whereIn('document_type', $documentTypes->all())
+            ->get()
+            ->each(fn (Document $document) => $document->update([
+                'status' => 'pending',
+                'rejection_reason' => null,
+                'reviewed_by' => null,
+                'reviewed_at' => null,
+            ]));
+
+        return true;
     }
 
     private function storeDocument(RiderProfile $riderProfile, string $type, UploadedFile $file): void
