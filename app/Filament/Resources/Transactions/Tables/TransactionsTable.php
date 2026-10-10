@@ -105,7 +105,8 @@ class TransactionsTable
                         'adjustment' => 'Adjustment',
                         'reversal' => 'Reversal',
                         'reversal_charge' => 'Reversal charge',
-                    ]),
+                    ])
+                    ->multiple(),
                 SelectFilter::make('status')
                     ->options([
                         'pending' => 'Pending',
