@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Wallets\Tables;
 
+use App\Models\User;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
@@ -12,6 +13,7 @@ use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class WalletsTable
 {
@@ -20,7 +22,11 @@ class WalletsTable
         return $table
             ->columns([
                 TextColumn::make('user.name')
-                    ->searchable(),
+                    ->label('User')
+                    ->searchable(query: fn (Builder $query, string $search): Builder => $query->whereHas(
+                        'user',
+                        fn (Builder $query) => $query->whereAny(['first_name', 'other_name', 'last_name'], 'ilike', "%{$search}%"),
+                    )),
                 TextColumn::make('balance')
                     ->numeric()
                     ->sortable(),
@@ -37,15 +43,12 @@ class WalletsTable
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('creator.name')
-                    ->numeric()
-                    ->sortable(),
+                    ->sortable(query: fn (Builder $query, string $direction): Builder => self::sortByUserName($query, 'created_by', $direction)),
                 TextColumn::make('updater.name')
-                    ->numeric()
-                    ->sortable()
+                    ->sortable(query: fn (Builder $query, string $direction): Builder => self::sortByUserName($query, 'updated_by', $direction))
                     ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('deleter.name')
-                    ->numeric()
-                    ->sortable()
+                    ->sortable(query: fn (Builder $query, string $direction): Builder => self::sortByUserName($query, 'deleted_by', $direction))
                     ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('deleted_at')
                     ->dateTime()
@@ -68,5 +71,20 @@ class WalletsTable
                     RestoreBulkAction::make(),
                 ]),
             ]);
+    }
+
+    /**
+     * name is an accessor, so sort by the audit user's first + last name via subqueries.
+     */
+    private static function sortByUserName(Builder $query, string $foreignKey, string $direction): Builder
+    {
+        foreach (['first_name', 'last_name'] as $column) {
+            $query->orderBy(
+                User::query()->select($column)->whereColumn('users.id', "wallets.{$foreignKey}"),
+                $direction,
+            );
+        }
+
+        return $query;
     }
 }
