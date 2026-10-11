@@ -25,7 +25,7 @@ class DeviceController extends Controller
         /** @var User $user */
         $user = $request->user();
 
-        $device = $deviceService->update($user, $id, $request->validated());
+        $device = $deviceService->update($user, $id, $request->validated(), $request->ip());
 
         return self::success(new DeviceResource($device));
     }

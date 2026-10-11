@@ -83,6 +83,8 @@ class AuthController extends Controller
                 'device_type' => $device_type,
                 'fcm_token' => $fcm_token,
                 'app_version' => $app_version,
+                'ip_address' => $request->ip(),
+                'last_seen_at' => now(),
                 'active' => true,
             ]);
 
