@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+use App\Filament\Resources\Transactions\TransactionResource;
 use BezhanSalleh\FilamentShield\Resources\Roles\RoleResource;
 use Filament\Pages\Dashboard;
 use Filament\Widgets\AccountWidget;
@@ -153,6 +154,7 @@ return [
             'forceDeleteAny',
             'restoreAny',
             'reorder',
+            'export',
         ],
     ],
 
@@ -192,6 +194,10 @@ return [
                 'create',
                 'update',
                 'delete',
+            ],
+            // Merged with the default methods above (policies.merge).
+            TransactionResource::class => [
+                'export',
             ],
         ],
         'exclude' => [

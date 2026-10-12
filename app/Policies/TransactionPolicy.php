@@ -71,4 +71,9 @@ class TransactionPolicy
     {
         return $authUser->can('Reorder:Transaction');
     }
+
+    public function export(AuthUser $authUser): bool
+    {
+        return $authUser->can('Export:Transaction');
+    }
 }
