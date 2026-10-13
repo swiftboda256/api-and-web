@@ -141,6 +141,46 @@ class ConfigurationSeeder extends Seeder
         );
 
         Configuration::query()->firstOrCreate(
+            ['key' => 'wallet_weekly_topup_limit'],
+            [
+                'value' => 50000,
+                'group' => 'wallet',
+                'description' => 'Maximum total amount (UGX) a user can top up into their wallet per week (Monday to Sunday). Pending and completed top-ups count towards it.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'wallet_weekly_withdrawal_limit'],
+            [
+                'value' => 50000,
+                'group' => 'wallet',
+                'description' => 'Maximum total amount (UGX, excluding charges) a user can withdraw from their wallet per week (Monday to Sunday). Processing and completed withdrawals count towards it.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'wallet_daily_limits_enabled'],
+            [
+                'value' => true,
+                'group' => 'wallet',
+                'description' => 'When false, the daily top-up and withdrawal limits are not enforced.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'wallet_weekly_limits_enabled'],
+            [
+                'value' => true,
+                'group' => 'wallet',
+                'description' => 'When false, the weekly top-up and withdrawal limits are not enforced.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
             ['key' => 'wallet_topups_enabled'],
             [
                 'value' => false,

@@ -11,6 +11,7 @@ use App\Services\Auth\OtpService;
 use App\Services\Payment\Constants\MobileMoneyTransactionStatus;
 use App\Services\Payment\Contracts\PaymentGateway;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -24,6 +25,8 @@ readonly class WalletService
     private const string PIN_RESET_PURPOSE = 'wallet_pin_reset';
 
     private const float DEFAULT_DAILY_LIMIT = 10000;
+
+    private const float DEFAULT_WEEKLY_LIMIT = 50000;
 
     public function __construct(
         private PaymentGateway $paymentGateway,
@@ -125,14 +128,13 @@ readonly class WalletService
             $phone = $data['phone'] ?? $user->phone;
             $amount = (float) $data['amount'];
 
-            $toppedUpToday = (float) Transaction::query()
+            $topUps = Transaction::query()
                 ->where('user_id', $user->id)
                 ->where('transaction_type', 'topup')
-                ->whereIn('status', ['pending', 'completed'])
-                ->where('created_at', '>=', now()->startOfDay())
-                ->sum('amount');
+                ->whereIn('status', ['pending', 'completed']);
 
-            $this->ensureWithinDailyLimit('wallet_daily_topup_limit', $toppedUpToday, $amount, 'top-up', 'top up');
+            $this->ensureWithinDailyLimit('wallet_daily_topup_limit', $topUps, $amount, 'top-up', 'top up');
+            $this->ensureWithinWeeklyLimit('wallet_weekly_topup_limit', $topUps, $amount, 'top-up', 'top up');
 
             $result = $this->paymentGateway->collectFromMobileMoney($phone, $amount, $wallet->currency_code, $reference, 'Wallet top-up');
 
@@ -206,24 +208,19 @@ readonly class WalletService
         $isMobileMoney = $data['channel'] === 'mobile_money';
         $breakdown = $this->withdrawChargeService->calculateChargeBreakdown($data['channel'], $data['account_identifier'], $amount);
         $baseCharge = $breakdown['base_charge'];
-        // The Yo!/platform charge (base_charge) is recorded as its own ledger transaction
-        // below rather than being deducted from the rider's wallet — only the telecom
-        // charge affects the wallet. All withdrawals are mobile money for now.
         $charge = $breakdown['operator_charge'];
         $walletDebit = round($amount + $charge, 2);
 
         return DB::transaction(function () use ($user, $wallet, $data, $amount, $charge, $baseCharge, $isMobileMoney, $walletDebit): WithdrawalRequest {
-            // Check the balance under a row lock so concurrent withdrawals can't both pass.
+
             $wallet = Wallet::query()->whereKey($wallet->id)->lockForUpdate()->first();
 
-            // Counts the requested amount (excluding charges) of today's non-rejected withdrawals.
-            $withdrawnToday = (float) WithdrawalRequest::query()
+            $withdrawals = WithdrawalRequest::query()
                 ->where('user_id', $user->id)
-                ->where('status', '!=', 'rejected')
-                ->where('created_at', '>=', now()->startOfDay())
-                ->sum('amount');
+                ->where('status', '!=', 'rejected');
 
-            $this->ensureWithinDailyLimit('wallet_daily_withdrawal_limit', $withdrawnToday, $amount, 'withdrawal', 'withdraw');
+            $this->ensureWithinDailyLimit('wallet_daily_withdrawal_limit', $withdrawals, $amount, 'withdrawal', 'withdraw');
+            $this->ensureWithinWeeklyLimit('wallet_weekly_withdrawal_limit', $withdrawals, $amount, 'withdrawal', 'withdraw');
 
             if ($walletDebit > (float) $wallet->balance) {
                 throw ValidationException::withMessages([
@@ -233,8 +230,6 @@ readonly class WalletService
 
             $balanceBefore = (float) $wallet->balance;
             $reference = (string) Str::uuid();
-            // Send amount + operator charge: the network deducts its fee from the payout,
-            // so the rider still receives the full requested amount.
             $result = $isMobileMoney
                 ? $this->paymentGateway->disburseToMobileMoney(
                     $data['account_identifier'],
@@ -250,8 +245,6 @@ readonly class WalletService
                 ? $balanceBefore
                 : round($balanceBefore - $walletDebit, 2);
 
-            // Debit up front (pending or completed) so the amount can't be spent again
-            // while the payout is in flight; TransactionService refunds it if it fails.
             if (! $withdrawalFailed) {
                 $wallet->update(['balance' => $balanceAfter]);
             }
@@ -294,9 +287,6 @@ readonly class WalletService
                 'failure_reason' => $result?->failureReason,
             ]);
 
-            // Ledger-only record of the Yo!/platform charge — credited to the system
-            // account, not the rider's wallet (only the telecom charge affects that,
-            // via the withdrawal transaction above).
             if ($isMobileMoney && $baseCharge > 0) {
                 $systemUser = User::role('system')->firstOrFail();
 
@@ -361,9 +351,17 @@ readonly class WalletService
         }
     }
 
-    private function ensureWithinDailyLimit(string $configurationKey, float $usedToday, float $amount, string $noun, string $verb): void
+    /**
+     * @param  Builder<Transaction>|Builder<WithdrawalRequest>  $query  the user's counted top-ups/withdrawals
+     */
+    private function ensureWithinDailyLimit(string $configurationKey, Builder $query, float $amount, string $noun, string $verb): void
     {
+        if (! filter_var(Configuration::get('wallet_daily_limits_enabled', true), FILTER_VALIDATE_BOOLEAN)) {
+            return;
+        }
+
         $limit = (float) Configuration::get($configurationKey, self::DEFAULT_DAILY_LIMIT);
+        $usedToday = (float) (clone $query)->where('created_at', '>=', now()->startOfDay())->sum('amount');
 
         if (round($usedToday + $amount, 2) <= $limit) {
             return;
@@ -373,8 +371,35 @@ readonly class WalletService
 
         throw ValidationException::withMessages([
             'amount' => $remaining > 0
-                ? 'This exceeds your daily '.$noun.' limit of UGX '.number_format($limit).'. You can '.$verb.' UGX '.number_format($remaining).' more today.'
+                ? 'This exceeds your daily '.$noun.' limit of UGX '.number_format($limit).'. You can '.$verb.' UGX '.number_format($remaining).'.'
                 : 'You have reached your daily '.$noun.' limit of UGX '.number_format($limit).'. Please try again tomorrow.',
+        ]);
+    }
+
+    /**
+     * The week runs Monday to Sunday.
+     *
+     * @param  Builder<Transaction>|Builder<WithdrawalRequest>  $query  the user's counted top-ups/withdrawals
+     */
+    private function ensureWithinWeeklyLimit(string $configurationKey, Builder $query, float $amount, string $noun, string $verb): void
+    {
+        if (! filter_var(Configuration::get('wallet_weekly_limits_enabled', true), FILTER_VALIDATE_BOOLEAN)) {
+            return;
+        }
+
+        $limit = (float) Configuration::get($configurationKey, self::DEFAULT_WEEKLY_LIMIT);
+        $usedThisWeek = (float) (clone $query)->where('created_at', '>=', now()->startOfWeek())->sum('amount');
+
+        if (round($usedThisWeek + $amount, 2) <= $limit) {
+            return;
+        }
+
+        $remaining = max($limit - $usedThisWeek, 0);
+
+        throw ValidationException::withMessages([
+            'amount' => $remaining > 0
+                ? 'This exceeds your weekly '.$noun.' limit of UGX '.number_format($limit).'. You can '.$verb.' UGX '.number_format($remaining).'.'
+                : 'You have reached your weekly '.$noun.' limit of UGX '.number_format($limit).'. Please try again next week.',
         ]);
     }
 
