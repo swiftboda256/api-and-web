@@ -199,23 +199,49 @@ class ConfigurationSeeder extends Seeder
         );
 
         Configuration::query()->firstOrCreate(
-            ['key' => 'wallet_topups_enabled'],
+            ['key' => 'user_wallet_topups_enabled'],
             [
                 'value' => false,
                 'value_type' => 'bool',
+                'guard' => 'user_app',
                 'group' => 'wallet',
-                'description' => 'When false, all wallet top-ups are rejected with a "temporarily unavailable" error.',
+                'description' => 'When false, all wallet top-ups from the user app are rejected with a "temporarily unavailable" error.',
                 'is_public' => false,
             ],
         );
 
         Configuration::query()->firstOrCreate(
-            ['key' => 'wallet_withdrawals_enabled'],
+            ['key' => 'user_wallet_withdrawals_enabled'],
             [
                 'value' => false,
                 'value_type' => 'bool',
+                'guard' => 'user_app',
                 'group' => 'wallet',
-                'description' => 'When false, all wallet withdrawals are rejected with a "temporarily unavailable" error.',
+                'description' => 'When false, all wallet withdrawals from the user app are rejected with a "temporarily unavailable" error.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'rider_wallet_topups_enabled'],
+            [
+                'value' => false,
+                'value_type' => 'bool',
+                'guard' => 'rider_app',
+                'group' => 'wallet',
+                'description' => 'When false, all wallet top-ups from the rider app are rejected with a "temporarily unavailable" error.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'rider_wallet_withdrawals_enabled'],
+            [
+                'value' => false,
+                'value_type' => 'bool',
+                'guard' => 'rider_app',
+                'group' => 'wallet',
+                'description' => 'When false, all wallet withdrawals from the rider app are rejected with a "temporarily unavailable" error.',
                 'is_public' => false,
             ],
         );

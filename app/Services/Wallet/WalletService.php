@@ -111,7 +111,10 @@ readonly class WalletService
      */
     public function topUp(User $user, array $data): Transaction
     {
-        $this->ensureWalletOperationEnabled('wallet_topups_enabled', 'Wallet top-ups are temporarily unavailable. Please try again later.');
+        $this->ensureWalletOperationEnabled(
+            $user->hasRole('rider') ? 'rider_wallet_topups_enabled' : 'user_wallet_topups_enabled',
+            'Wallet top-ups are temporarily unavailable. Please try again later.',
+        );
         $this->ensureRiderKycApproved($user, 'top up your wallet');
 
         $wallet = $this->getWallet($user);
@@ -183,7 +186,10 @@ readonly class WalletService
      */
     public function withdraw(User $user, array $data): WithdrawalRequest
     {
-        $this->ensureWalletOperationEnabled('wallet_withdrawals_enabled', 'Wallet withdrawals are temporarily unavailable. Please try again later.');
+        $this->ensureWalletOperationEnabled(
+            $user->hasRole('rider') ? 'rider_wallet_withdrawals_enabled' : 'user_wallet_withdrawals_enabled',
+            'Wallet withdrawals are temporarily unavailable. Please try again later.',
+        );
         $this->ensureRiderKycApproved($user, 'withdraw from your wallet');
 
         $wallet = $this->getWallet($user);
@@ -342,7 +348,8 @@ readonly class WalletService
     }
 
     /**
-     * Admin kill switch (Configurations). A missing key counts as disabled.
+     * Admin kill switch (Configurations), separate for the rider app (users with the rider
+     * role) and the user app (everyone else). A missing key counts as disabled.
      */
     private function ensureWalletOperationEnabled(string $configurationKey, string $message): void
     {
