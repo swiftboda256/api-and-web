@@ -38,6 +38,20 @@ class Configuration extends BaseModel
         ];
     }
 
+    protected static function booted(): void
+    {
+        $forget = function (Configuration $configuration): void {
+            Cache::forget("configuration:{$configuration->key}");
+
+            if ($configuration->wasChanged('key')) {
+                Cache::forget("configuration:{$configuration->getOriginal('key')}");
+            }
+        };
+
+        static::saved($forget);
+        static::deleted($forget);
+    }
+
     /**
      * Read a configuration value by key, cached briefly so hot paths
      * (e.g. OTP checks) don't hit the database on every call.
