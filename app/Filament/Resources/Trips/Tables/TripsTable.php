@@ -13,19 +13,17 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class TripsTable
 {
     public static function configure(Table $table): Table
     {
         return $table
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['passengers.customer', 'deliveries.sender']))
             ->defaultSort('created_at', 'desc')
             ->columns([
                 TextColumn::make('trip_number')
-                    ->searchable(),
-                TextColumn::make('customer.name')
-                    ->label('First customer')
-                    ->description(fn ($record) => $record->passenger_count > 1 ? "+{$record->passenger_count} on this trip" : null)
                     ->searchable(),
                 TextColumn::make('type')
                     ->searchable(),
@@ -42,12 +40,18 @@ class TripsTable
                     ->dateTime()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('creator.name'),
+                TextColumn::make('creator.name')
+                    ->searchable(query: fn (Builder $query, string $search): Builder => $query
+                        ->whereHas('creator', fn (Builder $query) => $query->whereAny(['first_name', 'other_name', 'last_name'], 'ilike', "%{$search}%"))),
                 TextColumn::make('updater.name')
+                    ->searchable(query: fn (Builder $query, string $search): Builder => $query
+                        ->whereHas('updater', fn (Builder $query) => $query->whereAny(['first_name', 'other_name', 'last_name'], 'ilike', "%{$search}%")))
                     ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('deleted_by')
                     ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('deleter.name')
+                    ->searchable(query: fn (Builder $query, string $search): Builder => $query
+                        ->whereHas('deleter', fn (Builder $query) => $query->whereAny(['first_name', 'other_name', 'last_name'], 'ilike', "%{$search}%")))
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
