@@ -8,6 +8,7 @@ use App\Http\Requests\Api\V1\UserApp\Trip\EstimateTripRequest;
 use App\Http\Requests\Api\V1\UserApp\Trip\IndexTripRequest;
 use App\Http\Requests\Api\V1\UserApp\Trip\RateTripRequest;
 use App\Http\Requests\Api\V1\UserApp\Trip\ScheduleTripRequest;
+use App\Http\Requests\Api\V1\UserApp\Trip\ShowTripRequest;
 use App\Http\Requests\Api\V1\UserApp\Trip\StoreTripRequest;
 use App\Http\Resources\Api\V1\UserApp\DeliveryResource;
 use App\Http\Resources\Api\V1\UserApp\RatingResource;
@@ -20,7 +21,6 @@ use App\Models\User;
 use App\Services\Trip\TripService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 class TripController extends Controller
 {
@@ -32,12 +32,12 @@ class TripController extends Controller
         return self::success(new TripCollection($tripService->list($user, $request->validated())));
     }
 
-    public function show(Request $request, int $trip, TripService $tripService): JsonResponse
+    public function show(ShowTripRequest $request, int $trip, TripService $tripService): JsonResponse
     {
         /** @var User $user */
         $user = $request->user();
 
-        return self::success($this->bookingResource($tripService->show($user, $trip)));
+        return self::success($this->bookingResource($tripService->show($user, $trip, $request->validated('type'))));
     }
 
     public function estimateTrip(EstimateTripRequest $request, TripService $tripService): JsonResponse
@@ -73,21 +73,35 @@ class TripController extends Controller
     }
 
     /**
-     * Cancels the customer's own booking on the given vehicle trip ({trip} = trip_id), for
-     * every trip type -- see TripService::cancel().
+     * Cancels the customer's own ride booking -- ride, ride-share or posted ride.
+     * {tripPassenger} is the booking id, the same id GET trips/{id} takes.
      */
-    public function cancel(CancelTripRequest $request, int $trip, TripService $tripService): JsonResponse
+    public function cancelRide(CancelTripRequest $request, int $tripPassenger, TripService $tripService): JsonResponse
     {
         /** @var User $user */
         $user = $request->user();
 
-        $booking = $tripService->cancel($user, $trip, $request->validated('cancellation_reason_id'));
+        $booking = $tripService->cancelPassenger($user, $tripPassenger, $request->validated('cancellation_reason_id'));
 
-        return self::success($this->bookingResource($booking));
+        return self::success(new TripPassengerResource($booking));
     }
 
     /**
-     * Kept for the same reason as cancel() -- rating always goes through
+     * Cancels the customer's own delivery booking -- delivery or pooled delivery.
+     * {delivery} is the delivery booking id (delivery_details_id).
+     */
+    public function cancelDelivery(CancelTripRequest $request, int $delivery, TripService $tripService): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $booking = $tripService->cancelDelivery($user, $delivery, $request->validated('cancellation_reason_id'));
+
+        return self::success(new DeliveryResource($booking));
+    }
+
+    /**
+     * Kept so the old route answers with a clear error -- rating always goes through
      * ratePassengerDriver()/rateDeliveryDriver() now.
      */
     public function rateRider(RateTripRequest $request, int $trip, TripService $tripService): JsonResponse

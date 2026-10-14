@@ -309,7 +309,7 @@ test('releasing twice does not return the held seats twice', function () {
 test('the customer can cancel while pending approval, releasing the seats but keeping the stops off the route', function () {
     $passenger = orderRideShare($this);
 
-    $this->patchJson("/api/v1/user-app/trips/cancel-ride/{$passenger->trip_id}")
+    $this->patchJson("/api/v1/user-app/trips/cancel-ride/{$passenger->id}")
         ->assertOk()
         ->assertJsonPath('data.rider', null)
         ->assertJsonPath('data.pickup.address', 'Pickup B')

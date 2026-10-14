@@ -59,7 +59,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('estimate', [TripController::class, 'estimateTrip'])->name('estimate');
         Route::post('schedule', [TripController::class, 'schedule'])->name('schedule');
         Route::post('order-ride', [TripController::class, 'store'])->name('order-ride');
-        Route::patch('cancel-ride/{trip}', [TripController::class, 'cancel'])->name('cancel-ride')->whereNumber('trip');
+        Route::patch('cancel-ride/{tripPassenger}', [TripController::class, 'cancelRide'])->name('cancel-ride')->whereNumber('tripPassenger');
+        Route::patch('cancel-delivery/{delivery}', [TripController::class, 'cancelDelivery'])->name('cancel-delivery')->whereNumber('delivery');
         Route::post('/{trip}/rate', [TripController::class, 'rateRider'])->name('rate-rider')->whereNumber('trip');
         Route::post('ride-share/{tripPassenger}/rate', [TripController::class, 'ratePassengerDriver'])->name('rate-ride-share')->whereNumber('tripPassenger');
         Route::post('delivery/{delivery}/rate', [TripController::class, 'rateDeliveryDriver'])->name('rate-delivery')->whereNumber('delivery');

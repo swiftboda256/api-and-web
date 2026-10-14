@@ -34,6 +34,9 @@ class TripPassengerResource extends JsonResource
             'trip_id' => $trip->id,
             'trip_number' => $trip->trip_number,
             'type' => $trip->type,
+            // The vehicle trip's own status (e.g. 'requested' = scheduled and not yet due,
+            // 'searching' = looking for a driver) -- 'status' below is this booking's.
+            'trip_status' => $trip->status,
             'available_seats' => $trip->available_seats,
             'passenger_count' => $trip->passenger_count,
             // Posted rides only: when the driver plans to leave.

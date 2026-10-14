@@ -248,7 +248,7 @@ test('the customer cancelling a searching trip stops the riders ringing', functi
     $rider = onlineRider($this);
     $passenger = bookRide($this);
 
-    $this->patchJson("/api/v1/user-app/trips/cancel-ride/{$passenger->trip_id}")->assertOk();
+    $this->patchJson("/api/v1/user-app/trips/cancel-ride/{$passenger->id}")->assertOk();
 
     expect(TripOffer::query()->where('rider_id', $rider->id)->value('status'))->toBe('withdrawn')
         ->and(pushesTo($this, $rider, 'ride_offer_cancelled')[0]->payloadData()['reason'])->toBe('cancelled');

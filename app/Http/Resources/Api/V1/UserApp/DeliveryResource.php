@@ -30,6 +30,8 @@ class DeliveryResource extends JsonResource
             'trip_id' => $trip->id,
             'trip_number' => $trip->trip_number,
             'type' => $trip->type,
+            // The vehicle trip's own status -- 'status' below is this delivery's.
+            'trip_status' => $trip->status,
             'available_cargo_weight_kg' => $trip->available_cargo_weight_kg,
             'passenger_count' => $trip->passenger_count,
             'accepted_at' => $trip->accepted_at,

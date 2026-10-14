@@ -211,7 +211,7 @@ test('a customer cancelling their booking frees the seats and the ride stays ope
     approveBooking($this, $passenger);
 
     Sanctum::actingAs($this->customer);
-    $this->patchJson("/api/v1/user-app/trips/cancel-ride/{$trip->id}")->assertOk();
+    $this->patchJson("/api/v1/user-app/trips/cancel-ride/{$passenger->id}")->assertOk();
 
     $trip->refresh();
 

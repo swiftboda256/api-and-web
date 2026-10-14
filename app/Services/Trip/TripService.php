@@ -19,6 +19,7 @@ use App\Services\Checkout\CheckoutService;
 use Carbon\CarbonImmutable;
 use Clickbar\Magellan\Data\Geometries\Point;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\DB;
@@ -241,12 +242,15 @@ readonly class TripService
     }
 
     /**
-     * Tries a TripPassenger first (ride/ride_share), then a DeliveryDetails
-     * (delivery/delivery_share).
+     * The customer's own booking by its id. Ride and delivery bookings are numbered
+     * separately, so the same id can exist in both: $type (the booking's own type) says
+     * which one is meant. Without it, a ride booking is tried first, then a delivery.
      */
-    public function show(User $user, int $tripId): TripPassenger|DeliveryDetails
+    public function show(User $user, int $tripId, ?string $type = null): TripPassenger|DeliveryDetails
     {
-        $passenger = TripPassenger::query()
+        $isDelivery = in_array($type, ['delivery', 'delivery_share'], true);
+
+        $passenger = $isDelivery ? null : TripPassenger::query()
             ->where('customer_id', $user->id)
             ->where('id', $tripId)
             ->with($this->passengerEagerLoads())
@@ -254,6 +258,10 @@ readonly class TripService
 
         if ($passenger !== null) {
             return $passenger;
+        }
+
+        if ($type !== null && ! $isDelivery) {
+            throw (new ModelNotFoundException)->setModel(TripPassenger::class, [$tripId]);
         }
 
         return DeliveryDetails::query()
@@ -774,38 +782,6 @@ readonly class TripService
     }
 
     /**
-     * The customer cancels their own booking on a vehicle trip. The trip's type decides the
-     * handler: ride/ride_share cancel the customer's passenger record (cancelPassenger()),
-     * delivery/delivery_share their delivery (cancelDelivery()). Only that booking is
-     * cancelled -- anyone else on a shared trip is unaffected. If the customer somehow has
-     * more than one booking on the trip, a still-active one is picked over a finished one.
-     */
-    public function cancel(User $user, int $tripId, ?int $cancellationReasonId): TripPassenger|DeliveryDetails
-    {
-        $trip = Trip::query()->findOrFail($tripId);
-
-        if (in_array($trip->type, ['delivery', 'delivery_share'], true)) {
-            $delivery = DeliveryDetails::query()
-                ->where('trip_id', $trip->id)
-                ->where('sender_id', $user->id)
-                ->orderByRaw("status IN ('dropped_off', 'cancelled')")
-                ->latest('id')
-                ->firstOrFail();
-
-            return $this->cancelDelivery($user, $delivery->id, $cancellationReasonId);
-        }
-
-        $passenger = TripPassenger::query()
-            ->where('trip_id', $trip->id)
-            ->where('customer_id', $user->id)
-            ->orderByRaw("status IN ('dropped_off', 'cancelled')")
-            ->latest('id')
-            ->firstOrFail();
-
-        return $this->cancelPassenger($user, $passenger->id, $cancellationReasonId);
-    }
-
-    /**
      * Cancel this customer's own seat on a ride or ride-share trip, not the whole vehicle
      * trip. No cancellation fee is charged. Any of their stops not yet reached are removed
      * and their seats are released back to the trip immediately.
@@ -942,7 +918,7 @@ readonly class TripService
 
     /**
      * Every trip type now rates through ratePassengerDriver()/rateDeliveryDriver() instead
-     * -- kept as a guarded stub for the same reason as cancel().
+     * -- kept as a guarded stub so the old route answers with a clear error.
      *
      * @param  array<string, mixed>  $data
      */
