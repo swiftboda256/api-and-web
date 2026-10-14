@@ -22,11 +22,12 @@ readonly class DeviceService
     /**
      * @param  array<string, mixed>  $data
      */
-    public function update(User $user, int $deviceId, array $data): UserDevice
+    public function update(User $user, int $deviceId, array $data, ?string $ipAddress = null): UserDevice
     {
         $device = $this->findOrFail($user, $deviceId);
 
         $device->fill($data);
+        $device->ip_address = $ipAddress ?? $device->ip_address;
         $device->last_seen_at = now();
         $device->save();
 

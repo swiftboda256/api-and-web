@@ -7,7 +7,6 @@
         <title>Swift Boda &mdash; Set Your Password</title>
 
         <link rel="icon" href="/favicon.ico" sizes="any">
-        <link rel="icon" href="/favicon.svg" type="image/svg+xml">
         <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 
         @fonts
@@ -17,6 +16,7 @@
     <body class="bg-[#FDFDFC] dark:bg-[#0a0a0a] text-[#1b1b18] dark:text-[#EDEDEC] antialiased min-h-screen flex items-center justify-center px-6 py-12">
         <main class="w-full max-w-lg">
             <div class="text-center mb-10">
+                <img src="{{ asset('assets/images/logo.jpeg') }}" alt="Swift Boda" class="mx-auto mb-6 h-16 w-16 rounded-2xl">
                 <h1 class="text-3xl sm:text-4xl font-semibold tracking-tight mb-3">Set your password</h1>
                 <p class="text-[#706f6c] dark:text-[#A1A09A] text-base leading-relaxed">
                     Welcome, {{ $user->name }}. Choose a password for your Swift Boda account.

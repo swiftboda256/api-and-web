@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\UserApp\AddressController;
 use App\Http\Controllers\Api\V1\UserApp\AuthController;
+use App\Http\Controllers\Api\V1\UserApp\ConfigurationController;
 use App\Http\Controllers\Api\V1\UserApp\DeviceController;
 use App\Http\Controllers\Api\V1\UserApp\EmergencyContactController;
 use App\Http\Controllers\Api\V1\UserApp\NotificationController;
@@ -30,6 +31,8 @@ Route::prefix('auth')->name('auth.')->group(function () {
     Route::post('verify-otp', [AuthController::class, 'verifyOtp'])->name('otp.verify');
     Route::post('logout', [AuthController::class, 'logout'])->middleware('auth:sanctum')->name('logout');
 });
+
+Route::get('configurations', [ConfigurationController::class, 'index'])->name('configurations');
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('profile', [ProfileController::class, 'index'])->name('profile');

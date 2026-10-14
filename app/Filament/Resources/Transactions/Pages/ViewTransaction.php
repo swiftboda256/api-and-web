@@ -52,6 +52,8 @@ class ViewTransaction extends ViewRecord
         return [
             TransactionActions::checkStatus()
                 ->after(fn () => $this->refreshTransaction()),
+            TransactionActions::reverse()
+                ->after(fn () => $this->refreshTransaction()),
         ];
     }
 

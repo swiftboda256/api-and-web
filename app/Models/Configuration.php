@@ -6,9 +6,25 @@ use Illuminate\Support\Facades\Cache;
 
 class Configuration extends BaseModel
 {
+    /** @var array<string, string> */
+    public const array VALUE_TYPES = [
+        'bool' => 'Boolean',
+        'text' => 'Text',
+        'number' => 'Number',
+    ];
+
+    /** @var array<string, string> */
+    public const array GUARDS = [
+        'global' => 'Global',
+        'user_app' => 'User app',
+        'rider_app' => 'Rider app',
+    ];
+
     protected $fillable = [
         'key',
         'value',
+        'value_type',
+        'guard',
         'group',
         'description',
         'is_public',
@@ -20,6 +36,20 @@ class Configuration extends BaseModel
             'value' => 'array',
             'is_public' => 'boolean',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        $forget = function (Configuration $configuration): void {
+            Cache::forget("configuration:{$configuration->key}");
+
+            if ($configuration->wasChanged('key')) {
+                Cache::forget("configuration:{$configuration->getOriginal('key')}");
+            }
+        };
+
+        static::saved($forget);
+        static::deleted($forget);
     }
 
     /**

@@ -7,7 +7,6 @@
         <title>Swift Boda &mdash; Coming Soon</title>
 
         <link rel="icon" href="/favicon.ico" sizes="any">
-        <link rel="icon" href="/favicon.svg" type="image/svg+xml">
         <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 
         @fonts
@@ -17,6 +16,7 @@
     <body class="bg-[#FDFDFC] dark:bg-[#0a0a0a] text-[#1b1b18] dark:text-[#EDEDEC] antialiased min-h-screen flex items-center justify-center px-6 py-12">
         <main class="w-full max-w-lg">
             <div class="text-center mb-10">
+                <img src="{{ asset('assets/images/logo.jpeg') }}" alt="Swift Boda" class="mx-auto mb-6 h-16 w-16 rounded-2xl">
                 <span class="inline-flex items-center gap-2 rounded-full border border-[#e3e3e0] dark:border-[#3E3E3A] px-3 py-1 text-xs font-medium text-[#706f6c] dark:text-[#A1A09A] mb-6">
                     <span class="w-1.5 h-1.5 rounded-full bg-[#f53003] dark:bg-[#FF4433]"></span>
                     Coming soon

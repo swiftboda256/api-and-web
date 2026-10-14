@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\RiderApp\AuthController;
+use App\Http\Controllers\Api\V1\RiderApp\ConfigurationController;
 use App\Http\Controllers\Api\V1\RiderApp\DeviceController;
 use App\Http\Controllers\Api\V1\RiderApp\EmergencyContactController;
 use App\Http\Controllers\Api\V1\RiderApp\NotificationController;
@@ -19,6 +20,9 @@ Route::prefix('auth')->name('auth.')->group(function () {
     Route::post('verify-otp', [AuthController::class, 'verifyOtp'])->name('otp.verify');
     Route::post('logout', [AuthController::class, 'logout'])->middleware('auth:sanctum')->name('logout');
 });
+
+// Public configurations only, so the app can load them before login.
+Route::get('configurations', [ConfigurationController::class, 'index'])->name('configurations');
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('profile', [ProfileController::class, 'index'])->name('profile');

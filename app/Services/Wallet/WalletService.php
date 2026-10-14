@@ -2,6 +2,7 @@
 
 namespace App\Services\Wallet;
 
+use App\Models\Configuration;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Models\Wallet;
@@ -10,6 +11,7 @@ use App\Services\Auth\OtpService;
 use App\Services\Payment\Constants\MobileMoneyTransactionStatus;
 use App\Services\Payment\Contracts\PaymentGateway;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -21,6 +23,10 @@ readonly class WalletService
     private const string PIN_RESET_CHANNEL = 'sms';
 
     private const string PIN_RESET_PURPOSE = 'wallet_pin_reset';
+
+    private const float DEFAULT_DAILY_LIMIT = 10000;
+
+    private const float DEFAULT_WEEKLY_LIMIT = 50000;
 
     public function __construct(
         private PaymentGateway $paymentGateway,
@@ -105,12 +111,33 @@ readonly class WalletService
      */
     public function topUp(User $user, array $data): Transaction
     {
+        $this->ensureWalletOperationEnabled(
+            $user->hasRole('rider') ? 'rider_wallet_topups_enabled' : 'user_wallet_topups_enabled',
+            'Wallet top-ups are temporarily unavailable. Please try again later.',
+        );
+        $this->ensureRiderKycApproved($user, 'top up your wallet');
+
         $wallet = $this->getWallet($user);
 
+        if ($data['method'] === 'mobile_money') {
+            $this->ensureRegisteredPhone($user, $data['phone'] ?? $user->phone, 'phone', 'Top-ups can only be made from your registered phone number.');
+        }
+
         return DB::transaction(function () use ($user, $wallet, $data): Transaction {
+            // Lock the wallet so concurrent top-ups can't both pass the daily limit check.
+            $wallet = Wallet::query()->whereKey($wallet->id)->lockForUpdate()->first();
+
             $reference = (string) Str::uuid();
             $phone = $data['phone'] ?? $user->phone;
             $amount = (float) $data['amount'];
+
+            $topUps = Transaction::query()
+                ->where('user_id', $user->id)
+                ->where('transaction_type', 'topup')
+                ->whereIn('status', ['pending', 'completed']);
+
+            $this->ensureWithinDailyLimit('wallet_daily_topup_limit', $topUps, $amount, 'top-up', 'top up');
+            $this->ensureWithinWeeklyLimit('wallet_weekly_topup_limit', $topUps, $amount, 'top-up', 'top up');
 
             $result = $this->paymentGateway->collectFromMobileMoney($phone, $amount, $wallet->currency_code, $reference, 'Wallet top-up');
 
@@ -159,8 +186,18 @@ readonly class WalletService
      */
     public function withdraw(User $user, array $data): WithdrawalRequest
     {
+        $this->ensureWalletOperationEnabled(
+            $user->hasRole('rider') ? 'rider_wallet_withdrawals_enabled' : 'user_wallet_withdrawals_enabled',
+            'Wallet withdrawals are temporarily unavailable. Please try again later.',
+        );
+        $this->ensureRiderKycApproved($user, 'withdraw from your wallet');
+
         $wallet = $this->getWallet($user);
         $amount = (float) $data['amount'];
+
+        if ($data['channel'] === 'mobile_money') {
+            $this->ensureRegisteredPhone($user, $data['account_identifier'], 'account_identifier', 'Withdrawals can only be made to your registered phone number.');
+        }
 
         if (! $wallet->pin) {
             throw ValidationException::withMessages([
@@ -177,15 +214,19 @@ readonly class WalletService
         $isMobileMoney = $data['channel'] === 'mobile_money';
         $breakdown = $this->withdrawChargeService->calculateChargeBreakdown($data['channel'], $data['account_identifier'], $amount);
         $baseCharge = $breakdown['base_charge'];
-        // The Yo!/platform charge (base_charge) is recorded as its own ledger transaction
-        // below rather than being deducted from the rider's wallet — only the telecom
-        // charge affects the wallet. All withdrawals are mobile money for now.
         $charge = $breakdown['operator_charge'];
         $walletDebit = round($amount + $charge, 2);
 
         return DB::transaction(function () use ($user, $wallet, $data, $amount, $charge, $baseCharge, $isMobileMoney, $walletDebit): WithdrawalRequest {
-            // Check the balance under a row lock so concurrent withdrawals can't both pass.
+
             $wallet = Wallet::query()->whereKey($wallet->id)->lockForUpdate()->first();
+
+            $withdrawals = WithdrawalRequest::query()
+                ->where('user_id', $user->id)
+                ->where('status', '!=', 'rejected');
+
+            $this->ensureWithinDailyLimit('wallet_daily_withdrawal_limit', $withdrawals, $amount, 'withdrawal', 'withdraw');
+            $this->ensureWithinWeeklyLimit('wallet_weekly_withdrawal_limit', $withdrawals, $amount, 'withdrawal', 'withdraw');
 
             if ($walletDebit > (float) $wallet->balance) {
                 throw ValidationException::withMessages([
@@ -195,8 +236,6 @@ readonly class WalletService
 
             $balanceBefore = (float) $wallet->balance;
             $reference = (string) Str::uuid();
-            // Send amount + operator charge: the network deducts its fee from the payout,
-            // so the rider still receives the full requested amount.
             $result = $isMobileMoney
                 ? $this->paymentGateway->disburseToMobileMoney(
                     $data['account_identifier'],
@@ -212,8 +251,6 @@ readonly class WalletService
                 ? $balanceBefore
                 : round($balanceBefore - $walletDebit, 2);
 
-            // Debit up front (pending or completed) so the amount can't be spent again
-            // while the payout is in flight; TransactionService refunds it if it fails.
             if (! $withdrawalFailed) {
                 $wallet->update(['balance' => $balanceAfter]);
             }
@@ -256,9 +293,6 @@ readonly class WalletService
                 'failure_reason' => $result?->failureReason,
             ]);
 
-            // Ledger-only record of the Yo!/platform charge — credited to the system
-            // account, not the rider's wallet (only the telecom charge affects that,
-            // via the withdrawal transaction above).
             if ($isMobileMoney && $baseCharge > 0) {
                 $systemUser = User::role('system')->firstOrFail();
 
@@ -311,6 +345,107 @@ readonly class WalletService
             ->orderByDesc('created_at');
 
         return $query->paginate((int) ($filters['per_page'] ?? 15));
+    }
+
+    /**
+     * Admin kill switch (Configurations), separate for the rider app (users with the rider
+     * role) and the user app (everyone else). A missing key counts as disabled.
+     */
+    private function ensureWalletOperationEnabled(string $configurationKey, string $message): void
+    {
+        if (! filter_var(Configuration::get($configurationKey, false), FILTER_VALIDATE_BOOLEAN)) {
+            throw ValidationException::withMessages(['wallet' => $message]);
+        }
+    }
+
+    /**
+     * @param  Builder<Transaction>|Builder<WithdrawalRequest>  $query  the user's counted top-ups/withdrawals
+     */
+    private function ensureWithinDailyLimit(string $configurationKey, Builder $query, float $amount, string $noun, string $verb): void
+    {
+        if (! filter_var(Configuration::get('wallet_daily_limits_enabled', true), FILTER_VALIDATE_BOOLEAN)) {
+            return;
+        }
+
+        $limit = (float) Configuration::get($configurationKey, self::DEFAULT_DAILY_LIMIT);
+        $usedToday = (float) (clone $query)->where('created_at', '>=', now()->startOfDay())->sum('amount');
+
+        if (round($usedToday + $amount, 2) <= $limit) {
+            return;
+        }
+
+        $remaining = max($limit - $usedToday, 0);
+
+        throw ValidationException::withMessages([
+            'amount' => $remaining > 0
+                ? 'This exceeds your daily '.$noun.' limit of UGX '.number_format($limit).'. You can '.$verb.' UGX '.number_format($remaining).'.'
+                : 'You have reached your daily '.$noun.' limit of UGX '.number_format($limit).'. Please try again tomorrow.',
+        ]);
+    }
+
+    /**
+     * The week runs Monday to Sunday.
+     *
+     * @param  Builder<Transaction>|Builder<WithdrawalRequest>  $query  the user's counted top-ups/withdrawals
+     */
+    private function ensureWithinWeeklyLimit(string $configurationKey, Builder $query, float $amount, string $noun, string $verb): void
+    {
+        if (! filter_var(Configuration::get('wallet_weekly_limits_enabled', true), FILTER_VALIDATE_BOOLEAN)) {
+            return;
+        }
+
+        $limit = (float) Configuration::get($configurationKey, self::DEFAULT_WEEKLY_LIMIT);
+        $usedThisWeek = (float) (clone $query)->where('created_at', '>=', now()->startOfWeek())->sum('amount');
+
+        if (round($usedThisWeek + $amount, 2) <= $limit) {
+            return;
+        }
+
+        $remaining = max($limit - $usedThisWeek, 0);
+
+        throw ValidationException::withMessages([
+            'amount' => $remaining > 0
+                ? 'This exceeds your weekly '.$noun.' limit of UGX '.number_format($limit).'. You can '.$verb.' UGX '.number_format($remaining).'.'
+                : 'You have reached your weekly '.$noun.' limit of UGX '.number_format($limit).'. Please try again next week.',
+        ]);
+    }
+
+    /**
+     * Customers have no rider profile and are unaffected.
+     */
+    private function ensureRiderKycApproved(User $user, string $action): void
+    {
+        $riderProfile = $user->riderProfile;
+
+        if ($riderProfile && $riderProfile->kyc_status !== 'approved') {
+            throw ValidationException::withMessages([
+                'kyc_status' => "Your account must be KYC-approved before you can {$action}.",
+            ]);
+        }
+    }
+
+    private function ensureRegisteredPhone(User $user, ?string $phone, string $field, string $message): void
+    {
+        $registeredPhone = $this->normalizePhone($user->phone);
+
+        if ($registeredPhone === '' || $this->normalizePhone($phone) !== $registeredPhone) {
+            throw ValidationException::withMessages([$field => $message]);
+        }
+    }
+
+    /**
+     * Reduces a Ugandan number in any common format (07..., 7..., 256..., +256...)
+     * to 256XXXXXXXXX so differently formatted copies of the same number match.
+     */
+    private function normalizePhone(?string $phone): string
+    {
+        $digits = preg_replace('/\D/', '', (string) $phone) ?? '';
+
+        return match (true) {
+            str_starts_with($digits, '0') => '256'.substr($digits, 1),
+            strlen($digits) === 9 => '256'.$digits,
+            default => $digits,
+        };
     }
 
     private function getWallet(User $user): Wallet

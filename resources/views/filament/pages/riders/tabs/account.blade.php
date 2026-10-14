@@ -26,7 +26,7 @@
                         <button
                             type="button"
                             wire:click="suspendAccount"
-                            wire:confirm="Suspend this account? The rider will be unable to go online or accept trips."
+                            wire:confirm="Suspend this account? The rider will be logged out of all devices and unable to log in while suspended."
                             @click="open = false"
                             class="block w-full px-3 py-2 text-left text-sm text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-500/10"
                         >
@@ -36,11 +36,11 @@
                         <button
                             type="button"
                             wire:click="reactivateAccount"
-                            wire:confirm="Reactivate this account?"
+                            wire:confirm="{{ $rider->status === 'suspended' ? 'Unsuspend this account? The rider will be able to log in again.' : 'Reactivate this account?' }}"
                             @click="open = false"
                             class="block w-full px-3 py-2 text-left text-sm text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-500/10"
                         >
-                            Reactivate
+                            {{ $rider->status === 'suspended' ? 'Unsuspend' : 'Reactivate' }}
                         </button>
                     @endif
 

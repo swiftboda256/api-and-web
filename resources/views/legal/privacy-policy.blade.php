@@ -8,7 +8,6 @@
         <meta name="description" content="How Swift Boda collects, uses, shares, and protects personal information.">
 
         <link rel="icon" href="/favicon.ico" sizes="any">
-        <link rel="icon" href="/favicon.svg" type="image/svg+xml">
         <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 
         @fonts
@@ -24,7 +23,10 @@
             </a>
 
             <header class="mt-10 border-b border-[#e3e3e0] pb-10 dark:border-[#3E3E3A]">
-                <p class="text-sm font-medium text-[#f53003] dark:text-[#FF4433]">Swift Boda</p>
+                <div class="flex items-center gap-3">
+                    <img src="{{ asset('assets/images/logo.jpeg') }}" alt="" class="h-10 w-10 rounded-xl">
+                    <p class="text-sm font-medium text-[#f53003] dark:text-[#FF4433]">Swift Boda</p>
+                </div>
                 <h1 class="mt-3 text-4xl font-semibold tracking-tight sm:text-5xl">Privacy Policy</h1>
                 <p class="mt-5 max-w-2xl text-base leading-7 text-[#706f6c] dark:text-[#A1A09A]">
                     This policy explains how Swift Boda handles personal information when you use our customer and rider apps, website, and related services.
