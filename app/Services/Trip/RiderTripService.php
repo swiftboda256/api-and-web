@@ -18,6 +18,7 @@ use App\Services\Checkout\CheckoutService;
 use App\Services\Payment\Constants\MobileMoneyTransactionStatus;
 use App\Services\Payment\Contracts\PaymentGateway;
 use App\Services\Wallet\TransactionService;
+use App\Support\ClientTime;
 use Clickbar\Magellan\Data\Geometries\Point;
 use Clickbar\Magellan\Database\PostgisFunctions\ST;
 use Illuminate\Http\UploadedFile;
@@ -363,62 +364,88 @@ readonly class RiderTripService
             ]);
         }
 
-        DB::transaction(function () use ($trip, $user, $cancellationReasonId): void {
-            $trip->update([
-                'status' => 'cancelled',
-                'cancelled_at' => now(),
-                'cancelled_by' => $user->id,
-                'cancellation_reason_id' => $cancellationReasonId,
-            ]);
-
-            // Cancelling the whole vehicle trip cancels every passenger/delivery still on
-            // it too (no cancellation fee, same as an individual cancel) -- one already
-            // dropped off keeps its completed status untouched.
-            $cancelUpdate = [
-                'status' => 'cancelled',
-                'cancelled_at' => now(),
-                'cancelled_by' => $user->id,
-                'cancellation_reason_id' => $cancellationReasonId,
-            ];
-
-            if (in_array($trip->type, ['ride', 'ride_share'], true)) {
-                TripPassenger::query()
-                    ->where('trip_id', $trip->id)
-                    ->whereIn('status', self::ACTIVE_PASSENGER_STATUSES)
-                    ->update($cancelUpdate);
-            } elseif (in_array($trip->type, ['delivery', 'delivery_share'], true)) {
-                DeliveryDetails::query()
-                    ->where('trip_id', $trip->id)
-                    ->whereIn('status', self::ACTIVE_PASSENGER_STATUSES)
-                    ->update($cancelUpdate);
-            }
-        });
-
         Log::info('trip.rider_cancelled', [
             'trip_id' => $trip->id,
             'rider_id' => $user->id,
             'cancellation_reason_id' => $cancellationReasonId,
         ]);
 
-        $trip->update([
-            'status' => 'searching',
-            'rider_id' => null,
-            'vehicle_id' => null,
-            'accepted_at' => null,
-            'arrived_at' => null,
-            'started_at' => null,
-        ]);
-
         $riderProfile->update(['availability_status' => 'online']);
 
-        // A fresh search, without the rider who just cancelled.
+        if ($trip->status === 'in_progress') {
+            $this->cancelTripUnderWay($trip, $user, $cancellationReasonId);
+        } else {
+            $this->searchAgainWithoutRider($trip, $user);
+        }
+
+        return $trip->refresh()->load(['vehicleType', 'deliveries.sender', 'passengers.customer', 'passengers.fareBreakdown']);
+    }
+
+    /**
+     * The rider cancelled before picking anyone up: the booking goes back to waiting for a
+     * driver and the trip searches again, without this rider.
+     */
+    private function searchAgainWithoutRider(Trip $trip, User $user): void
+    {
+        DB::transaction(function () use ($trip): void {
+            $isRide = in_array($trip->type, ['ride', 'ride_share'], true);
+
+            ($isRide ? TripPassenger::query() : DeliveryDetails::query())
+                ->where('trip_id', $trip->id)
+                ->whereIn('status', ['matched', 'arrived_pickup'])
+                ->update(['status' => 'requested', 'matched_at' => null]);
+
+            // Nobody was picked up, so no pickup stop has really been reached.
+            ($isRide ? TripStop::query() : DeliveryStop::query())
+                ->where('trip_id', $trip->id)
+                ->where('stop_type', 'pickup')
+                ->update(['arrived_at' => null]);
+
+            $trip->update([
+                'status' => 'searching',
+                'rider_id' => null,
+                'vehicle_id' => null,
+                'accepted_at' => null,
+                'arrived_at' => null,
+                'started_at' => null,
+            ]);
+        });
+
         $this->dispatch->startSearch($trip, excludedRiderId: $user->id);
 
         if ($booking = $this->notifier->primaryBooking($trip)) {
             $this->notifier->riderCancelled($booking);
         }
+    }
 
-        return $trip->refresh()->load(['vehicleType', 'deliveries.sender', 'passengers.customer', 'passengers.fareBreakdown']);
+    /**
+     * The rider cancelled a trip already under way: it can't be handed to another rider
+     * mid-journey, so the trip and every booking still on it are cancelled (no charge).
+     */
+    private function cancelTripUnderWay(Trip $trip, User $user, ?int $cancellationReasonId): void
+    {
+        $cancelUpdate = [
+            'status' => 'cancelled',
+            'cancelled_at' => now(),
+            'cancelled_by' => $user->id,
+            'cancellation_reason_id' => $cancellationReasonId,
+        ];
+
+        $isRide = in_array($trip->type, ['ride', 'ride_share'], true);
+
+        $bookings = ($isRide ? TripPassenger::query()->with('customer') : DeliveryDetails::query()->with('sender'))
+            ->where('trip_id', $trip->id)
+            ->whereIn('status', self::ACTIVE_PASSENGER_STATUSES)
+            ->get();
+
+        DB::transaction(function () use ($trip, $cancelUpdate, $bookings, $isRide): void {
+            $trip->update($cancelUpdate);
+            ($isRide ? TripPassenger::query() : DeliveryDetails::query())->whereKey($bookings->modelKeys())->update($cancelUpdate);
+        });
+
+        foreach ($bookings as $booking) {
+            $this->notifier->tripCancelled($booking->setRelation('trip', $trip));
+        }
     }
 
     /**
@@ -866,7 +893,7 @@ readonly class RiderTripService
             'location' => Point::makeGeodetic((float) $data['latitude'], (float) $data['longitude']),
             'heading' => $data['heading'] ?? null,
             'speed' => $data['speed'] ?? null,
-            'recorded_at' => $data['recorded_at'] ?? now(),
+            'recorded_at' => isset($data['recorded_at']) ? ClientTime::parse($data['recorded_at']) : now(),
         ]);
 
         $this->nearDestination->check($trip, $location->location);

@@ -89,6 +89,16 @@ readonly class TripNotifier
     }
 
     /**
+     * The rider cancelled a trip already under way; the booking is cancelled, not re-searched.
+     */
+    public function tripCancelled(TripPassenger|DeliveryDetails $booking): void
+    {
+        $this->toCustomer($booking, 'trip_cancelled', 'Your trip was cancelled', 'Your rider cancelled the trip. You have not been charged.',
+            ['status' => 'cancelled'],
+        );
+    }
+
+    /**
      * Nobody accepted the trip before the search timed out; the booking is cancelled.
      */
     public function noRiders(TripPassenger|DeliveryDetails $booking): void

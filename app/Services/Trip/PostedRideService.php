@@ -11,7 +11,7 @@ use App\Models\User;
 use App\Services\Checkout\CheckoutService;
 use App\Services\Push\FcmGateway;
 use App\Services\Push\PushMessage;
-use Carbon\CarbonImmutable;
+use App\Support\ClientTime;
 use Carbon\CarbonInterface;
 use Clickbar\Magellan\Data\Geometries\Point;
 use Clickbar\Magellan\Database\PostgisFunctions\ST;
@@ -109,7 +109,7 @@ readonly class PostedRideService
             'route_duration_minutes' => $this->checkout->durationMinutes($distanceKm),
             'requested_at' => now(),
             'accepted_at' => now(),
-            'departs_at' => CarbonImmutable::parse($data['departs_at']),
+            'departs_at' => ClientTime::parse($data['departs_at']),
         ]);
 
         return $trip->load(['vehicleType', 'zone']);
@@ -179,6 +179,12 @@ readonly class PostedRideService
         $trip = $this->showOpen($user, $tripId);
         $seats = (int) ($data['seats_requested'] ?? 1);
 
+        if (! $trip->departs_at->isFuture()) {
+            throw ValidationException::withMessages([
+                'trip' => 'This ride has already departed.',
+            ]);
+        }
+
         if (TripPassenger::query()->where('trip_id', $trip->id)->where('customer_id', $user->id)->whereIn('status', self::SEAT_HOLDING_STATUSES)->exists()) {
             throw ValidationException::withMessages([
                 'trip' => 'You have already booked this ride.',
@@ -196,9 +202,12 @@ readonly class PostedRideService
                 ->decrement('available_seats', $seats);
 
             if ($claimed === 0) {
-                throw ValidationException::withMessages([
-                    'seats_requested' => 'There are not enough seats left on this ride.',
-                ]);
+                // Say why: the ride may have left or closed since it was loaded above.
+                $current = Trip::query()->find($trip->id);
+
+                throw ValidationException::withMessages($current?->status === 'open' && $current->departs_at->isFuture()
+                    ? ['seats_requested' => 'There are not enough seats left on this ride.']
+                    : ['trip' => 'This ride is no longer taking bookings.']);
             }
 
             $passenger = TripPassenger::query()->create([

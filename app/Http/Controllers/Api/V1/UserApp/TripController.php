@@ -19,6 +19,7 @@ use App\Models\DeliveryDetails;
 use App\Models\TripPassenger;
 use App\Models\User;
 use App\Services\Trip\TripService;
+use App\Support\ClientTime;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 
@@ -64,7 +65,7 @@ class TripController extends Controller
         $user = $request->user();
 
         $data = $request->validated();
-        $requestedAt = CarbonImmutable::parse($data['requested_at']);
+        $requestedAt = ClientTime::parse($data['requested_at']);
         unset($data['requested_at']);
 
         $booking = $tripService->book($user, $data, $requestedAt);

@@ -27,8 +27,8 @@ use Illuminate\Support\Facades\DB;
  *
  * Also re-points every transaction still linked to a legacy trip (trip payments, payouts,
  * commissions, reversals) at the booking that replaces it, since payment confirmations
- * and booking history now look transactions up by TripPassenger/DeliveryDetails. And a
- * trip still searching when this runs either joins the new dispatch (requested within the
+ * and booking history now look transactions up by TripPassenger/DeliveryDetails. And any
+ * trip still searching from before the new dispatch either joins it (requested within the
  * search timeout) or is cancelled as a search nobody answered.
  *
  * Idempotent and safe to re-run: each step is gated on "not yet done" (no trip_passengers
@@ -81,9 +81,7 @@ class BackfillTripPassengerModel extends Command
             ->with(['zone', 'fareBreakdowns'])
             ->chunkById(100, function ($trips) use ($dryRun, &$rideBackfilled): void {
                 foreach ($trips as $trip) {
-                    if ($dryRun) {
-                        $this->staleSearchesCancelled += (int) $this->isStaleSearch($trip);
-                    } else {
+                    if (! $dryRun) {
                         $this->backfillRideTrip($trip);
                     }
 
@@ -105,9 +103,7 @@ class BackfillTripPassengerModel extends Command
                         continue;
                     }
 
-                    if ($dryRun) {
-                        $this->staleSearchesCancelled += (int) $this->isStaleSearch($trip);
-                    } else {
+                    if (! $dryRun) {
                         $this->backfillDeliveryTrip($trip);
                     }
 
@@ -124,6 +120,8 @@ class BackfillTripPassengerModel extends Command
         if ($skippedTransactions > 0) {
             $this->warn("{$skippedTransactions} trip transaction(s) left linked to their trip -- the trip is not backfilled yet or does not have exactly one booking.");
         }
+
+        $this->resolveSearchesWithoutStart($dryRun);
 
         if ($this->staleSearchesCancelled > 0) {
             $this->info(($dryRun ? 'Would cancel' : 'Cancelled')." {$this->staleSearchesCancelled} trip(s) left searching past the search timeout.");
@@ -215,8 +213,6 @@ class BackfillTripPassengerModel extends Command
 
             $fareBreakdown->save();
 
-            $this->resolveSearchingTrip($trip, $passenger);
-
             TripStop::query()->create([
                 'trip_id' => $trip->id,
                 'trip_passenger_id' => $passenger->id,
@@ -295,7 +291,6 @@ class BackfillTripPassengerModel extends Command
                 'arrived_at' => $this->dropoffArrivedAt($trip),
             ]);
 
-            $this->resolveSearchingTrip($trip, $delivery);
         });
     }
 
@@ -310,28 +305,47 @@ class BackfillTripPassengerModel extends Command
     }
 
     /**
-     * A trip still looking for a rider has no search start (the dispatch that sets one is
-     * new), so it would never ring riders or time out. One requested within the search
-     * timeout gets a search start of when it was requested, handing it to
-     * ProcessTripDispatch like any other. One requested longer ago is a search nobody
-     * answered -- it's cancelled with its booking, quietly, rather than ringing riders and
-     * telling the customer about a request they made long ago.
+     * Trips still searching from before the new dispatch have no search start, so they'd
+     * never ring riders or time out -- whether they were backfilled in this run or an
+     * earlier one. One requested within the search timeout gets a search start of when it
+     * was requested, handing it to ProcessTripDispatch like any other. One requested longer
+     * ago is a search nobody answered: it's cancelled with its bookings, quietly, rather
+     * than ringing riders and telling the customer about a request made long ago.
      */
-    private function resolveSearchingTrip(Trip $trip, TripPassenger|DeliveryDetails $booking): void
+    private function resolveSearchesWithoutStart(bool $dryRun): void
     {
-        if ($trip->status !== 'searching' || $trip->search_started_at !== null) {
-            return;
-        }
+        Trip::query()
+            ->where('status', 'searching')
+            ->whereNull('search_started_at')
+            ->whereIn('type', ['ride', 'ride_share', 'delivery', 'delivery_share'])
+            ->chunkById(100, function ($trips) use ($dryRun): void {
+                foreach ($trips as $trip) {
+                    if (! $this->isStaleSearch($trip)) {
+                        if (! $dryRun) {
+                            Trip::query()->whereKey($trip->id)->update(['search_started_at' => $trip->requested_at]);
+                        }
 
-        if (! $this->isStaleSearch($trip)) {
-            Trip::query()->whereKey($trip->id)->update(['search_started_at' => $trip->requested_at]);
+                        continue;
+                    }
 
-            return;
-        }
+                    $this->staleSearchesCancelled++;
 
-        Trip::query()->whereKey($trip->id)->update(['status' => 'cancelled', 'cancelled_at' => now()]);
-        $booking->update(['status' => 'cancelled', 'cancelled_at' => now()]);
-        $this->staleSearchesCancelled++;
+                    if ($dryRun) {
+                        continue;
+                    }
+
+                    DB::transaction(function () use ($trip): void {
+                        $cancelled = ['status' => 'cancelled', 'cancelled_at' => now()];
+
+                        Trip::query()->whereKey($trip->id)->update($cancelled);
+
+                        (in_array($trip->type, ['ride', 'ride_share'], true) ? TripPassenger::query() : DeliveryDetails::query())
+                            ->where('trip_id', $trip->id)
+                            ->whereIn('status', ['requested', 'pending_approval', 'matched'])
+                            ->update($cancelled);
+                    });
+                }
+            });
     }
 
     /**
@@ -339,9 +353,7 @@ class BackfillTripPassengerModel extends Command
      */
     private function isStaleSearch(Trip $trip): bool
     {
-        return $trip->status === 'searching'
-            && $trip->search_started_at === null
-            && $trip->requested_at->addMinutes((int) Configuration::get('dispatch_search_timeout_minutes', 5))->isPast();
+        return $trip->requested_at->addMinutes((int) Configuration::get('dispatch_search_timeout_minutes', 5))->isPast();
     }
 
     /**

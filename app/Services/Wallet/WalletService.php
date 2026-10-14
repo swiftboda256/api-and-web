@@ -10,7 +10,7 @@ use App\Models\WithdrawalRequest;
 use App\Services\Auth\OtpService;
 use App\Services\Payment\Constants\MobileMoneyTransactionStatus;
 use App\Services\Payment\Contracts\PaymentGateway;
-use Carbon\CarbonImmutable;
+use App\Support\ClientTime;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -340,8 +340,8 @@ readonly class WalletService
             ->where('wallet_id', $wallet->id)
             ->when($filters['type'] ?? null, fn ($query, $type) => $query->where('transaction_type', $type))
             ->when($filters['direction'] ?? null, fn ($query, $direction) => $query->where('direction', $direction))
-            ->when($filters['from'] ?? null, fn ($query, $from) => $query->where('created_at', '>=', CarbonImmutable::parse($from)))
-            ->when($filters['to'] ?? null, fn ($query, $to) => $query->where('created_at', '<=', CarbonImmutable::parse($to)))
+            ->when($filters['from'] ?? null, fn ($query, $from) => $query->where('created_at', '>=', ClientTime::parse($from)))
+            ->when($filters['to'] ?? null, fn ($query, $to) => $query->where('created_at', '<=', ClientTime::parse($to)))
             ->orderByDesc('created_at');
 
         return $query->paginate((int) ($filters['per_page'] ?? 15));

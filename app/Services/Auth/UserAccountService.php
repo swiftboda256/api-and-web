@@ -69,12 +69,12 @@ class UserAccountService
             ->whereIn('status', $activeStatuses)
             ->pluck('rider_id');
 
-        $userIdsWithActiveTripsAsCustomer = TripPassenger::query()
+        $userIdsWithActiveTripsAsCustomer = TripPassenger::query()->whereHas('trip')
             ->whereIn('customer_id', $userIds)
             ->whereIn('status', $activePassengerStatuses)
             ->pluck('customer_id')
             ->merge(
-                DeliveryDetails::query()
+                DeliveryDetails::query()->whereHas('trip')
                     ->whereIn('sender_id', $userIds)
                     ->whereIn('status', $activePassengerStatuses)
                     ->pluck('sender_id')
@@ -187,8 +187,8 @@ class UserAccountService
     {
         $activePassengerStatuses = ['requested', 'pending_approval', 'matched', 'arrived_pickup', 'picked_up', 'arrived_dropoff'];
 
-        return TripPassenger::query()->where('customer_id', $userId)->whereIn('status', $activePassengerStatuses)->exists()
-            || DeliveryDetails::query()->where('sender_id', $userId)->whereIn('status', $activePassengerStatuses)->exists();
+        return TripPassenger::query()->whereHas('trip')->where('customer_id', $userId)->whereIn('status', $activePassengerStatuses)->exists()
+            || DeliveryDetails::query()->whereHas('trip')->where('sender_id', $userId)->whereIn('status', $activePassengerStatuses)->exists();
     }
 
     private function hasActiveTripAsRider(int $userId): bool

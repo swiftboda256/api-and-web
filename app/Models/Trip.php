@@ -82,6 +82,30 @@ class Trip extends BaseModel
         'cancellation_reason_id',
     ];
 
+    /**
+     * Deleting a trip in the admin deletes its bookings with it, so customers never see a
+     * booking whose trip is gone; restoring the trip restores them. (A force delete
+     * removes them through the foreign key's cascade.)
+     */
+    protected static function booted(): void
+    {
+        static::deleting(function (Trip $trip): void {
+            if ($trip->isForceDeleting()) {
+                return;
+            }
+
+            $trip->passengers()->delete();
+            $trip->deliveries()->delete();
+        });
+
+        // Bookings are never soft-deleted on their own (cancelling keeps them), so a trip's
+        // deleted bookings are exactly the ones deleted with it.
+        static::restored(function (Trip $trip): void {
+            TripPassenger::onlyTrashed()->where('trip_id', $trip->id)->restore();
+            DeliveryDetails::onlyTrashed()->where('trip_id', $trip->id)->restore();
+        });
+    }
+
     protected function casts(): array
     {
         return [

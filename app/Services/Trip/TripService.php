@@ -16,6 +16,7 @@ use App\Models\User;
 use App\Models\VehicleType;
 use App\Models\Zone;
 use App\Services\Checkout\CheckoutService;
+use App\Support\ClientTime;
 use Carbon\CarbonImmutable;
 use Clickbar\Magellan\Data\Geometries\Point;
 use Illuminate\Database\Eloquent\Builder;
@@ -160,11 +161,11 @@ readonly class TripService
      */
     private function passengerTripsQuery(User $user, array $filters): Builder
     {
-        return TripPassenger::query()
+        return TripPassenger::query()->whereHas('trip')
             ->where('customer_id', $user->id)
             ->when($filters['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
-            ->when($filters['from'] ?? null, fn ($query, $from) => $query->where('requested_at', '>=', CarbonImmutable::parse($from)))
-            ->when($filters['to'] ?? null, fn ($query, $to) => $query->where('requested_at', '<=', CarbonImmutable::parse($to)));
+            ->when($filters['from'] ?? null, fn ($query, $from) => $query->where('requested_at', '>=', ClientTime::parse($from)))
+            ->when($filters['to'] ?? null, fn ($query, $to) => $query->where('requested_at', '<=', ClientTime::parse($to)));
     }
 
     /**
@@ -173,11 +174,11 @@ readonly class TripService
      */
     private function deliveryTripsQuery(User $user, array $filters): Builder
     {
-        return DeliveryDetails::query()
+        return DeliveryDetails::query()->whereHas('trip')
             ->where('sender_id', $user->id)
             ->when($filters['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
-            ->when($filters['from'] ?? null, fn ($query, $from) => $query->where('requested_at', '>=', CarbonImmutable::parse($from)))
-            ->when($filters['to'] ?? null, fn ($query, $to) => $query->where('requested_at', '<=', CarbonImmutable::parse($to)));
+            ->when($filters['from'] ?? null, fn ($query, $from) => $query->where('requested_at', '>=', ClientTime::parse($from)))
+            ->when($filters['to'] ?? null, fn ($query, $to) => $query->where('requested_at', '<=', ClientTime::parse($to)));
     }
 
     /**
@@ -250,7 +251,7 @@ readonly class TripService
     {
         $isDelivery = in_array($type, ['delivery', 'delivery_share'], true);
 
-        $passenger = $isDelivery ? null : TripPassenger::query()
+        $passenger = $isDelivery ? null : TripPassenger::query()->whereHas('trip')
             ->where('customer_id', $user->id)
             ->where('id', $tripId)
             ->with($this->passengerEagerLoads())
@@ -264,7 +265,7 @@ readonly class TripService
             throw (new ModelNotFoundException)->setModel(TripPassenger::class, [$tripId]);
         }
 
-        return DeliveryDetails::query()
+        return DeliveryDetails::query()->whereHas('trip')
             ->where('sender_id', $user->id)
             ->where('id', $tripId)
             ->with($this->deliveryEagerLoads())
@@ -792,7 +793,7 @@ readonly class TripService
      */
     public function cancelPassenger(User $user, int $tripPassengerId, ?int $cancellationReasonId): TripPassenger
     {
-        $passenger = TripPassenger::query()
+        $passenger = TripPassenger::query()->whereHas('trip')
             ->where('customer_id', $user->id)
             ->where('id', $tripPassengerId)
             ->with('trip')
@@ -804,9 +805,17 @@ readonly class TripService
             ]);
         }
 
+        // Once the passenger is on board, only the rider can end their ride.
+        if (in_array($passenger->status, ['picked_up', 'arrived_dropoff'], true)) {
+            throw ValidationException::withMessages([
+                'status' => 'You can\'t cancel a ride that is already under way.',
+            ]);
+        }
+
         // A posted ride carries on whoever cancels -- it's the driver's own trip.
         if ($passenger->trip->type === 'posted_ride') {
             $this->postedRides->cancelBooking($passenger, $user, $cancellationReasonId);
+            $this->closeTripIfNobodyLeft($passenger->trip);
             $this->notifyRiderOfCustomerCancellation($passenger);
 
             return $passenger->refresh()->load($this->passengerEagerLoads());
@@ -859,6 +868,7 @@ readonly class TripService
 
         $this->releaseRiderIfTripCancelled($passenger->trip);
         $this->closeOffersIfTripCancelled($passenger->trip);
+        $this->closeTripIfNobodyLeft($passenger->trip);
         $this->notifyRiderOfCustomerCancellation($passenger);
 
         return $passenger->refresh()->load($this->passengerEagerLoads());
@@ -870,7 +880,7 @@ readonly class TripService
      */
     public function cancelDelivery(User $user, int $deliveryDetailsId, ?int $cancellationReasonId): DeliveryDetails
     {
-        $delivery = DeliveryDetails::query()
+        $delivery = DeliveryDetails::query()->whereHas('trip')
             ->where('sender_id', $user->id)
             ->where('id', $deliveryDetailsId)
             ->with('trip')
@@ -879,6 +889,12 @@ readonly class TripService
         if (in_array($delivery->status, ['dropped_off', 'cancelled'], true)) {
             throw ValidationException::withMessages([
                 'status' => 'This delivery can no longer be cancelled.',
+            ]);
+        }
+
+        if (in_array($delivery->status, ['picked_up', 'arrived_dropoff'], true)) {
+            throw ValidationException::withMessages([
+                'status' => 'You can\'t cancel a delivery that has already been picked up.',
             ]);
         }
 
@@ -911,6 +927,7 @@ readonly class TripService
 
         $this->releaseRiderIfTripCancelled($delivery->trip);
         $this->closeOffersIfTripCancelled($delivery->trip);
+        $this->closeTripIfNobodyLeft($delivery->trip);
         $this->notifyRiderOfCustomerCancellation($delivery);
 
         return $delivery->refresh()->load($this->deliveryEagerLoads());
@@ -934,7 +951,7 @@ readonly class TripService
      */
     public function ratePassengerDriver(User $user, int $tripPassengerId, array $data): Rating
     {
-        $passenger = TripPassenger::query()
+        $passenger = TripPassenger::query()->whereHas('trip')
             ->where('customer_id', $user->id)
             ->where('id', $tripPassengerId)
             ->with('trip')
@@ -974,7 +991,7 @@ readonly class TripService
      */
     public function rateDeliveryDriver(User $user, int $deliveryDetailsId, array $data): Rating
     {
-        $delivery = DeliveryDetails::query()
+        $delivery = DeliveryDetails::query()->whereHas('trip')
             ->where('sender_id', $user->id)
             ->where('id', $deliveryDetailsId)
             ->with('trip')
@@ -1029,6 +1046,36 @@ readonly class TripService
         if ($trip->status !== 'cancelled' || $trip->rider_id === null) {
             return;
         }
+
+        RiderProfile::query()
+            ->where('user_id', $trip->rider_id)
+            ->where('availability_status', 'on_trip')
+            ->update(['availability_status' => 'online']);
+    }
+
+    /**
+     * A trip under way that a cancellation left with nobody to pick up or drop off closes:
+     * completed if anyone was carried, cancelled if not. The rider is freed either way.
+     */
+    private function closeTripIfNobodyLeft(Trip $trip): void
+    {
+        $trip->refresh();
+
+        if ($trip->status !== 'in_progress') {
+            return;
+        }
+
+        $bookings = fn () => in_array($trip->type, ['ride', 'ride_share', 'posted_ride'], true)
+            ? TripPassenger::query()->where('trip_id', $trip->id)
+            : DeliveryDetails::query()->where('trip_id', $trip->id);
+
+        if ($bookings()->whereIn('status', ['requested', 'matched', 'arrived_pickup', 'picked_up', 'arrived_dropoff'])->exists()) {
+            return;
+        }
+
+        $trip->update($bookings()->where('status', 'dropped_off')->exists()
+            ? ['status' => 'completed', 'completed_at' => now()]
+            : ['status' => 'cancelled', 'cancelled_at' => now()]);
 
         RiderProfile::query()
             ->where('user_id', $trip->rider_id)

@@ -79,7 +79,9 @@ readonly class TripDispatchService
         $booking?->load($booking instanceof DeliveryDetails ? ['stops'] : ['stops', 'fareBreakdown']);
         $pickupStop = $booking?->stops->firstWhere('stop_type', 'pickup');
 
-        if ($booking === null || $pickupStop?->location === null) {
+        // Nobody is waiting on this trip any more (its booking was cancelled): nothing to
+        // offer. The search ends at its timeout.
+        if ($booking === null || $booking->status !== 'requested' || $pickupStop?->location === null) {
             return 0;
         }
 
@@ -194,10 +196,6 @@ readonly class TripDispatchService
 
             return $bookings;
         });
-
-        if ($bookings->isEmpty()) {
-            return;
-        }
 
         $this->closeOffers($trip, 'cancelled');
 
