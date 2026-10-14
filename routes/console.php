@@ -3,6 +3,7 @@
 use App\Console\Commands\DispatchScheduledTrips;
 use App\Console\Commands\ExpirePostedRideRequests;
 use App\Console\Commands\ExpireRideShareJoinRequests;
+use App\Console\Commands\ProcessTripDispatch;
 use App\Console\Commands\ResolvePendingTransactions;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -16,3 +17,4 @@ Schedule::command(DispatchScheduledTrips::class)->everyMinute()->withoutOverlapp
 Schedule::command(ResolvePendingTransactions::class)->everyTwoSeconds()->withoutOverlapping();
 Schedule::command(ExpireRideShareJoinRequests::class)->everyFiveSeconds()->withoutOverlapping();
 Schedule::command(ExpirePostedRideRequests::class)->everyMinute()->withoutOverlapping();
+Schedule::command(ProcessTripDispatch::class)->everyTenSeconds()->withoutOverlapping();

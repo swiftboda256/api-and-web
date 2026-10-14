@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
  * @property 'requested'|'searching'|'open'|'accepted'|'arrived'|'in_progress'|'completed'|'cancelled' $status
  * @property CarbonImmutable $requested_at
  * @property CarbonImmutable|null $departs_at
+ * @property CarbonImmutable|null $search_started_at
  *
  * Posted-ride only: the driver's own fixed route and per-seat fare, set when posting.
  * @property float|null $seat_fare
@@ -71,6 +72,7 @@ class Trip extends BaseModel
         'route_duration_minutes',
         'requested_at',
         'departs_at',
+        'search_started_at',
         'accepted_at',
         'arrived_at',
         'started_at',
@@ -85,6 +87,7 @@ class Trip extends BaseModel
         return [
             'requested_at' => 'datetime',
             'departs_at' => 'datetime',
+            'search_started_at' => 'datetime',
             'accepted_at' => 'datetime',
             'arrived_at' => 'datetime',
             'started_at' => 'datetime',
@@ -199,6 +202,14 @@ class Trip extends BaseModel
     public function passengers(): HasMany
     {
         return $this->hasMany(TripPassenger::class)->orderBy('requested_at');
+    }
+
+    /**
+     * @return HasMany<TripOffer, $this>
+     */
+    public function offers(): HasMany
+    {
+        return $this->hasMany(TripOffer::class);
     }
 
     /**

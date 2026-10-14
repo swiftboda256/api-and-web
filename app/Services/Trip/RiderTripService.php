@@ -13,12 +13,10 @@ use App\Models\TripLocation;
 use App\Models\TripPassenger;
 use App\Models\TripStop;
 use App\Models\User;
-use App\Models\UserDevice;
 use App\Models\Wallet;
 use App\Services\Checkout\CheckoutService;
 use App\Services\Payment\Constants\MobileMoneyTransactionStatus;
 use App\Services\Payment\Contracts\PaymentGateway;
-use App\Services\Push\FcmGateway;
 use App\Services\Wallet\TransactionService;
 use Clickbar\Magellan\Data\Geometries\Point;
 use Clickbar\Magellan\Database\PostgisFunctions\ST;
@@ -38,13 +36,15 @@ readonly class RiderTripService
     private const array ACTIVE_PASSENGER_STATUSES = ['requested', 'matched', 'arrived_pickup', 'picked_up', 'arrived_dropoff'];
 
     public function __construct(
-        private FcmGateway $pushGateway,
         private CheckoutService $checkout,
         private PaymentGateway $paymentGateway,
         private TransactionService $transactionService,
         private RideShareMatchingService $rideShareMatching,
         private TripService $tripService,
         private PostedRideService $postedRides,
+        private TripDispatchService $dispatch,
+        private TripNotifier $notifier,
+        private NearDestinationService $nearDestination,
     ) {}
 
     /**
@@ -182,16 +182,14 @@ readonly class RiderTripService
             ->update(['status' => 'matched', 'matched_at' => now()]);
 
         $trip = Trip::query()
-            ->with(['vehicleType', 'deliveries.sender.devices', 'passengers.customer.devices', 'passengers.fareBreakdown'])
+            ->with(['vehicleType', 'deliveries.sender', 'passengers.customer', 'passengers.fareBreakdown'])
             ->findOrFail($tripId);
 
-        try {
-            $this->notifyCustomerOfAcceptance($trip, $user);
-        } catch (Throwable $e) {
-            Log::error('trip.acceptance_notification_failed', [
-                'trip_id' => $trip->id,
-                'error' => $e->getMessage(),
-            ]);
+        // Every other rider still ringing for this trip stops.
+        $this->dispatch->closeOffers($trip, 'taken', $user->id);
+
+        if ($booking = $this->notifier->primaryBooking($trip)) {
+            $this->notifier->riderAssigned($booking, $user);
         }
 
         return $trip;
@@ -218,18 +216,11 @@ readonly class RiderTripService
             $this->markFirstDeliveryStop($trip, 'pickup', 'arrived_pickup');
         }
 
-        $trip = $trip->refresh()->load(['vehicleType', 'deliveries.sender.devices', 'passengers.customer.devices', 'passengers.fareBreakdown']);
-
-        try {
-            $this->notifyCustomerOfArrival($trip);
-        } catch (Throwable $e) {
-            Log::error('trip.arrival_notification_failed', [
-                'trip_id' => $trip->id,
-                'error' => $e->getMessage(),
-            ]);
+        if ($booking = $this->notifier->primaryBooking($trip)) {
+            $this->notifier->riderArrived($booking);
         }
 
-        return $trip;
+        return $trip->refresh()->load(['vehicleType', 'deliveries.sender', 'passengers.customer', 'passengers.fareBreakdown']);
     }
 
     public function start(User $user, int $tripId): Trip
@@ -255,6 +246,10 @@ readonly class RiderTripService
             $this->markFirstPassengerStop($trip, 'pickup', 'picked_up');
         } elseif (in_array($trip->type, ['delivery', 'delivery_share'], true)) {
             $this->markFirstDeliveryStop($trip, 'pickup', 'picked_up');
+        }
+
+        if ($booking = $this->notifier->primaryBooking($trip)) {
+            $this->notifier->started($booking);
         }
 
         return $trip->refresh()->load(['vehicleType', 'deliveries.sender', 'passengers.customer', 'passengers.fareBreakdown']);
@@ -399,15 +394,6 @@ readonly class RiderTripService
             }
         });
 
-        // trips no longer carry their own pickup_location -- fall back to the earliest
-        // pickup stop recorded for this trip, which is what trip->pickup_location always
-        // pointed at anyway (the first passenger/delivery's pickup point).
-        $pickupStop = in_array($trip->type, ['ride', 'ride_share'], true)
-            ? TripStop::query()->where('trip_id', $trip->id)->where('stop_type', 'pickup')->whereNotNull('sequence')->orderBy('sequence')->first()
-            : DeliveryStop::query()->where('trip_id', $trip->id)->where('stop_type', 'pickup')->whereNotNull('sequence')->orderBy('sequence')->first();
-        $pickup = $pickupStop?->location;
-        $vehicleTypeId = (int) $trip->vehicle_type_id;
-
         Log::info('trip.rider_cancelled', [
             'trip_id' => $trip->id,
             'rider_id' => $user->id,
@@ -425,29 +411,14 @@ readonly class RiderTripService
 
         $riderProfile->update(['availability_status' => 'online']);
 
-        $trip = $trip->refresh()->load(['vehicleType', 'deliveries.sender.devices', 'passengers.customer.devices', 'passengers.fareBreakdown']);
+        // A fresh search, without the rider who just cancelled.
+        $this->dispatch->startSearch($trip, excludedRiderId: $user->id);
 
-        if ($pickup !== null) {
-            try {
-                $this->dispatchToNearbyRiders($trip, $pickup, $vehicleTypeId, $user->id, $pickupStop->address);
-            } catch (Throwable $e) {
-                Log::error('trip.rider_cancellation_dispatch_failed', [
-                    'trip_id' => $trip->id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
+        if ($booking = $this->notifier->primaryBooking($trip)) {
+            $this->notifier->riderCancelled($booking);
         }
 
-        try {
-            $this->notifyCustomerOfRiderCancellation($trip);
-        } catch (Throwable $e) {
-            Log::error('trip.rider_cancellation_notification_failed', [
-                'trip_id' => $trip->id,
-                'error' => $e->getMessage(),
-            ]);
-        }
-
-        return $trip;
+        return $trip->refresh()->load(['vehicleType', 'deliveries.sender', 'passengers.customer', 'passengers.fareBreakdown']);
     }
 
     /**
@@ -612,6 +583,8 @@ readonly class RiderTripService
             $passenger->update(['status' => 'picked_up', 'picked_up_at' => now()]);
         });
 
+        $this->notifier->started($passenger);
+
         return $passenger->fresh()->load(['customer', 'fareBreakdown', 'stops']);
     }
 
@@ -648,6 +621,8 @@ readonly class RiderTripService
 
             $delivery->update(['status' => 'picked_up', 'picked_up_at' => now()]);
         });
+
+        $this->notifier->started($delivery);
 
         return $delivery->fresh()->load(['sender', 'stops']);
     }
@@ -785,6 +760,9 @@ readonly class RiderTripService
 
         $this->maybeCompleteTrip($trip, $riderProfile);
 
+        // Callers wrap the drop-off in a transaction -- tell the customer once it's saved.
+        DB::afterCommit(fn () => $this->notifier->completed($settleable));
+
         return $settleable instanceof DeliveryDetails
             ? $settleable->fresh()->load(['sender', 'stops'])
             : $settleable->fresh()->load(['customer', 'fareBreakdown', 'stops']);
@@ -882,7 +860,7 @@ readonly class RiderTripService
             ]);
         }
 
-        return TripLocation::query()->create([
+        $location = TripLocation::query()->create([
             'trip_id' => $trip->id,
             'rider_profile_id' => $riderProfile->id,
             'location' => Point::makeGeodetic((float) $data['latitude'], (float) $data['longitude']),
@@ -890,6 +868,10 @@ readonly class RiderTripService
             'speed' => $data['speed'] ?? null,
             'recorded_at' => $data['recorded_at'] ?? now(),
         ]);
+
+        $this->nearDestination->check($trip, $location->location);
+
+        return $location;
     }
 
     private function storeProofOfDeliveryPhoto(Trip $trip, UploadedFile $file): string
@@ -903,117 +885,6 @@ readonly class RiderTripService
         }
 
         return Storage::disk('public')->url($path);
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function primaryCustomerDeviceTokens(Trip $trip): array
-    {
-        $customer = $trip->primaryCustomer();
-
-        if ($customer === null) {
-            return [];
-        }
-
-        $tokens = $customer->devices
-            ->filter(fn (UserDevice $device): bool => $device->active && filled($device->fcm_token))
-            ->map(fn (UserDevice $device): string => (string) $device->fcm_token)
-            ->unique()
-            ->values()
-            ->all();
-
-        return array_values($tokens);
-    }
-
-    private function notifyCustomerOfAcceptance(Trip $trip, User $rider): void
-    {
-        $this->pushGateway->sendToTokens(
-            $this->primaryCustomerDeviceTokens($trip),
-            'Your rider is on the way',
-            "{$rider->name} has accepted your trip and is heading to the pickup point.",
-            [
-                'trip_id' => (string) $trip->id,
-                'status' => 'accepted',
-            ],
-        );
-    }
-
-    private function notifyCustomerOfArrival(Trip $trip): void
-    {
-        $this->pushGateway->sendToTokens(
-            $this->primaryCustomerDeviceTokens($trip),
-            'Your rider has arrived',
-            'Your rider is waiting at the pickup point.',
-            [
-                'trip_id' => (string) $trip->id,
-                'status' => 'arrived',
-            ],
-        );
-    }
-
-    private function dispatchToNearbyRiders(Trip $trip, Point $pickup, int $vehicleTypeId, int $excludedUserId, ?string $pickupAddress = null): void
-    {
-        $radiusMeters = (float) Configuration::get('dispatch_radius_km', 5) * 1000;
-
-        $riderProfiles = RiderProfile::query()
-            ->where('availability_status', 'online')
-            ->whereNotNull('current_location')
-            ->where('user_id', '!=', $excludedUserId)
-            ->withinWalletLimit()
-            ->whereHas('vehicle', fn ($query) => $query->where('vehicle_type_id', $vehicleTypeId)->where('status', 'approved'))
-            ->where(ST::distanceSphere('current_location', $pickup), '<=', $radiusMeters)
-            ->with('user.devices')
-            ->get();
-
-        $tokens = $riderProfiles
-            ->flatMap(fn (RiderProfile $riderProfile) => $riderProfile->user->devices)
-            ->filter(fn (UserDevice $device): bool => $device->active && filled($device->fcm_token))
-            ->map(fn (UserDevice $device): string => (string) $device->fcm_token)
-            ->unique()
-            ->values()
-            ->all();
-
-        $body = $pickupAddress
-            ? "New {$trip->type} request near {$pickupAddress}"
-            : "New {$trip->type} request nearby";
-
-        $isRide = in_array($trip->type, ['ride', 'ride_share'], true);
-        $primaryItem = $isRide
-            ? ($trip->relationLoaded('passengers') ? $trip->passengers->first() : $trip->passengers()->first())
-            : ($trip->relationLoaded('deliveries') ? $trip->deliveries->first() : $trip->deliveries()->first());
-
-        // Ride/ride_share's fare lives on the passenger's fare breakdown now; delivery keeps
-        // it on the delivery record directly.
-        $estimatedFare = $primaryItem instanceof TripPassenger ? $primaryItem->fareBreakdown?->estimated_fare : $primaryItem?->estimated_fare;
-        $currencyCode = $primaryItem instanceof TripPassenger ? $primaryItem->fareBreakdown?->currency_code : $primaryItem?->currency_code;
-
-        $this->pushGateway->sendToTokens(
-            array_values($tokens),
-            'New trip request',
-            $body,
-            [
-                'trip_id' => (string) $trip->id,
-                'type' => $trip->type,
-                'pickup_latitude' => (string) $pickup->getLatitude(),
-                'pickup_longitude' => (string) $pickup->getLongitude(),
-                'estimated_fare' => (string) $estimatedFare,
-                'currency_code' => (string) $currencyCode,
-            ],
-        );
-    }
-
-    private function notifyCustomerOfRiderCancellation(Trip $trip): void
-    {
-        $this->pushGateway->sendToTokens(
-            $this->primaryCustomerDeviceTokens($trip),
-            'Your rider cancelled',
-            'Your rider cancelled the trip. We are finding you another rider.',
-            [
-                'trip_id' => (string) $trip->id,
-                'status' => 'searching',
-            ],
-        );
     }
 
     private function settleWalletPayment(TripPassenger|DeliveryDetails $settleable, TripFareBreakdown|DeliveryDetails $paymentRecord, RiderProfile $riderProfile, float $finalFare, float $riderEarning, float $commissionAmount): void
@@ -1215,7 +1086,7 @@ readonly class RiderTripService
 
         foreach ($settled as $settlement) {
             try {
-                $this->notifyCustomerOfCashReceived($settlement['settleable'], $settlement['paymentRecord'], $settlement['finalFare']);
+                $this->notifier->paymentReceived($settlement['settleable'], (string) $settlement['paymentRecord']->currency_code, $settlement['finalFare']);
             } catch (Throwable $e) {
                 Log::error('trip.cash_received_notification_failed', [
                     'trip_id' => $trip->id,
@@ -1238,7 +1109,7 @@ readonly class RiderTripService
                 ->when($settleableId !== null, fn ($query) => $query->where('id', $settleableId))
                 ->where('status', 'dropped_off')
                 ->whereHas('fareBreakdown', fn ($query) => $query->where('payment_method', 'cash')->where('payment_status', '!=', 'paid'))
-                ->with(['fareBreakdown', 'customer.devices', 'trip'])
+                ->with(['fareBreakdown', 'customer', 'trip'])
                 ->get()
                 ->all();
         }
@@ -1249,32 +1120,9 @@ readonly class RiderTripService
             ->where('status', 'dropped_off')
             ->where('payment_method', 'cash')
             ->where('payment_status', '!=', 'paid')
-            ->with(['sender.devices', 'trip'])
+            ->with(['sender', 'trip'])
             ->get()
             ->all();
-    }
-
-    private function notifyCustomerOfCashReceived(TripPassenger|DeliveryDetails $settleable, TripFareBreakdown|DeliveryDetails $paymentRecord, float $finalFare): void
-    {
-        $customer = $settleable instanceof DeliveryDetails ? $settleable->sender : $settleable->customer;
-
-        $tokens = $customer->devices
-            ->filter(fn (UserDevice $device): bool => $device->active && filled($device->fcm_token))
-            ->map(fn (UserDevice $device): string => (string) $device->fcm_token)
-            ->unique()
-            ->values()
-            ->all();
-
-        $this->pushGateway->sendToTokens(
-            array_values($tokens),
-            'Payment received',
-            "Your rider has received your cash payment of {$paymentRecord->currency_code} ".number_format($finalFare).'. Thank you for riding with us.',
-            [
-                'trip_id' => (string) $settleable->trip_id,
-                ($settleable instanceof DeliveryDetails ? 'delivery_details_id' : 'trip_passenger_id') => (string) $settleable->id,
-                'payment_status' => 'paid',
-            ],
-        );
     }
 
     private function riderEarning(float $finalFare, float $commissionRate): float

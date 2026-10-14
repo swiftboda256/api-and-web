@@ -11,6 +11,7 @@ use App\Models\Vehicle;
 use App\Models\VehicleType;
 use App\Models\Zone;
 use App\Services\Push\FcmGateway;
+use App\Services\Push\PushMessage;
 use Clickbar\Magellan\Data\Geometries\LineString;
 use Clickbar\Magellan\Data\Geometries\Point;
 use Clickbar\Magellan\Data\Geometries\Polygon;
@@ -82,8 +83,8 @@ function bookSeats($test, Trip $trip, User $customer, int $seats = 1): TripPasse
  */
 function assertPushed($test, string $type): void
 {
-    $test->push->shouldHaveReceived('sendToTokens')
-        ->withArgs(fn ($tokens, $title, $body, $data) => ($data['type'] ?? null) === $type)
+    $test->push->shouldHaveReceived('sendToUser')
+        ->withArgs(fn ($user, PushMessage $message) => $message->type === $type)
         ->atLeast()->once();
 }
 

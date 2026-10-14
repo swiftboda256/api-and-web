@@ -8,18 +8,17 @@ use App\Models\TripFareBreakdown;
 use App\Models\TripPassenger;
 use App\Models\TripStop;
 use App\Models\User;
-use App\Models\UserDevice;
 use App\Services\Checkout\CheckoutService;
 use App\Services\Push\FcmGateway;
+use App\Services\Push\PushMessage;
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use Clickbar\Magellan\Data\Geometries\Point;
 use Clickbar\Magellan\Database\PostgisFunctions\ST;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
-use Throwable;
 
 /**
  * Posted rides: the driver posts a fixed origin -> destination trip for a set date at their
@@ -292,12 +291,11 @@ readonly class PostedRideService
             return $passenger;
         });
 
-        $approved->load('customer.devices');
-        $this->notify(
-            $approved->customer,
+        $approved->load('customer');
+        $this->notify($approved->customer, 'posted_ride_booking_approved', $approved->id,
             'Booking approved',
             'Your driver approved your seat booking.',
-            ['type' => 'posted_ride_booking_approved', 'trip_id' => (string) $approved->trip_id, 'trip_passenger_id' => (string) $approved->id, 'status' => 'matched'],
+            ['trip_id' => $approved->trip_id, 'trip_passenger_id' => $approved->id, 'status' => 'matched'],
         );
 
         return $approved;
@@ -311,12 +309,11 @@ readonly class PostedRideService
         $declined = $this->cancelPending($passenger, $driver, null);
 
         if ($declined) {
-            $passenger->load('customer.devices');
-            $this->notify(
-                $passenger->customer,
+            $passenger->load('customer');
+            $this->notify($passenger->customer, 'posted_ride_booking_declined', $passenger->id,
                 'Booking declined',
                 'The driver declined your seat booking.',
-                ['type' => 'posted_ride_booking_declined', 'trip_id' => (string) $passenger->trip_id, 'trip_passenger_id' => (string) $passenger->id, 'status' => 'cancelled'],
+                ['trip_id' => $passenger->trip_id, 'trip_passenger_id' => $passenger->id, 'status' => 'cancelled'],
             );
         }
     }
@@ -328,12 +325,11 @@ readonly class PostedRideService
     public function expire(TripPassenger $passenger): void
     {
         if ($this->cancelPending($passenger, null, null)) {
-            $passenger->load('customer.devices');
-            $this->notify(
-                $passenger->customer,
+            $passenger->load('customer');
+            $this->notify($passenger->customer, 'posted_ride_booking_expired', $passenger->id,
                 'Booking request expired',
                 'The driver did not respond to your seat booking in time. You can book another ride.',
-                ['type' => 'posted_ride_booking_expired', 'trip_id' => (string) $passenger->trip_id, 'trip_passenger_id' => (string) $passenger->id, 'status' => 'cancelled'],
+                ['trip_id' => $passenger->trip_id, 'trip_passenger_id' => $passenger->id, 'status' => 'cancelled'],
             );
         }
     }
@@ -381,15 +377,13 @@ readonly class PostedRideService
             return $passenger;
         });
 
-        $removed->load(['customer.devices', 'cancellationReason']);
-        $this->notify(
-            $removed->customer,
+        $removed->load(['customer', 'cancellationReason']);
+        $this->notify($removed->customer, 'posted_ride_passenger_removed', $removed->id,
             'Removed from ride',
             'The driver removed you from the ride you booked. You have not been charged.',
             [
-                'type' => 'posted_ride_passenger_removed',
-                'trip_id' => (string) $removed->trip_id,
-                'trip_passenger_id' => (string) $removed->id,
+                'trip_id' => $removed->trip_id,
+                'trip_passenger_id' => $removed->id,
                 'status' => 'cancelled',
                 'cancellation_reason' => (string) $removed->cancellationReason?->label,
             ],
@@ -421,7 +415,7 @@ readonly class PostedRideService
         $affected = TripPassenger::query()
             ->where('trip_id', $trip->id)
             ->whereIn('status', self::SEAT_HOLDING_STATUSES)
-            ->with('customer.devices')
+            ->with('customer')
             ->get();
 
         DB::transaction(function () use ($trip, $driver, $cancellationReasonId, $affected): void {
@@ -438,11 +432,10 @@ readonly class PostedRideService
         });
 
         foreach ($affected as $passenger) {
-            $this->notify(
-                $passenger->customer,
+            $this->notify($passenger->customer, 'posted_ride_cancelled', $passenger->id,
                 'Ride cancelled',
                 'The driver cancelled the ride you booked.',
-                ['type' => 'posted_ride_cancelled', 'trip_id' => (string) $trip->id, 'trip_passenger_id' => (string) $passenger->id, 'status' => 'cancelled'],
+                ['trip_id' => $trip->id, 'trip_passenger_id' => $passenger->id, 'status' => 'cancelled'],
             );
         }
     }
@@ -539,32 +532,33 @@ readonly class PostedRideService
             return;
         }
 
-        $this->notify($driver, 'New seat booking', 'A passenger wants to book seats on your posted ride. Approve or decline before the request expires.', [
-            'type' => 'posted_ride_booking_request',
-            'trip_id' => (string) $trip->id,
-            'trip_passenger_id' => (string) $passenger->id,
-            'seats_requested' => (string) $passenger->seats_requested,
-            'expires_at' => (string) $passenger->request_expires_at?->toIso8601String(),
-        ]);
+        $this->notify($driver, 'posted_ride_booking_request', $trip->id,
+            'New seat booking',
+            'A passenger wants to book seats on your posted ride. Approve or decline before the request expires.',
+            [
+                'trip_id' => $trip->id,
+                'trip_passenger_id' => $passenger->id,
+                'seats_requested' => $passenger->seats_requested,
+            ],
+            expiresAt: $passenger->request_expires_at,
+        );
     }
 
     /**
-     * @param  array<non-empty-string, string>  $data
+     * $id: the booking id on customer pushes, the trip id on the driver's.
+     *
+     * @param  array<non-empty-string, string|int|float|null>  $data
      */
-    private function notify(User $user, string $title, string $body, array $data): void
+    private function notify(?User $user, string $type, int $id, string $title, string $body, array $data, ?CarbonInterface $expiresAt = null): void
     {
-        $tokens = $user->devices
-            ->filter(fn (UserDevice $device): bool => $device->active && filled($device->fcm_token))
-            ->map(fn (UserDevice $device): string => (string) $device->fcm_token)
-            ->unique()
-            ->values()
-            ->all();
-
-        try {
-            $this->pushGateway->sendToTokens(array_values($tokens), $title, $body, $data);
-        } catch (Throwable $e) {
-            Log::error('posted_ride.notification_failed', ['user_id' => $user->id, 'error' => $e->getMessage()]);
-        }
+        $this->pushGateway->sendToUser($user, new PushMessage(
+            type: $type,
+            id: $id,
+            title: $title,
+            body: $body,
+            data: $data,
+            expiresAt: $expiresAt,
+        ));
     }
 
     private function generateTripNumber(): string

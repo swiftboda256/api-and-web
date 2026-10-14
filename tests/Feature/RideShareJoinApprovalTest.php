@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\VehicleType;
 use App\Models\Zone;
 use App\Services\Push\FcmGateway;
+use App\Services\Push\PushMessage;
 use App\Services\Routing\Contracts\RoutingGateway;
 use App\Services\Routing\RouteResult;
 use App\Services\Trip\RideShareMatchingService;
@@ -152,10 +153,10 @@ test('booking offers the passenger to the ongoing trip as pending_approval and n
     expect($trip->available_seats)->toBe(2)
         ->and($trip->passenger_count)->toBe(1);
 
-    $this->push->shouldHaveReceived('sendToTokens')
-        ->withArgs(fn ($tokens, $title, $body, $data) => $title === 'New ride-share request'
-            && $data['type'] === 'ride_share_join_request'
-            && $data['trip_passenger_id'] === (string) $passenger->id)
+    $this->push->shouldHaveReceived('sendToUser')
+        ->withArgs(fn ($user, PushMessage $message) => $message->type === 'ride_share_join_request'
+            && $message->title === 'New ride-share request'
+            && $message->payloadData()['trip_passenger_id'] === (string) $passenger->id)
         ->once();
 });
 
@@ -207,8 +208,8 @@ test('accepting adds the passenger to the route as matched', function () {
         ->and($trip->passenger_count)->toBe(2)
         ->and($trip->available_seats)->toBe(2);
 
-    $this->push->shouldHaveReceived('sendToTokens')
-        ->withArgs(fn ($tokens, $title) => $title === 'You have been matched')
+    $this->push->shouldHaveReceived('sendToUser')
+        ->withArgs(fn ($user, PushMessage $message) => $message->type === 'trip_rider_assigned' && $message->id === $passenger->id)
         ->once();
 });
 

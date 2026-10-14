@@ -8,10 +8,9 @@ use App\Models\Trip;
 use App\Models\TripFareBreakdown;
 use App\Models\TripPassenger;
 use App\Models\TripStop;
-use App\Models\User;
-use App\Models\UserDevice;
 use App\Services\Checkout\CheckoutService;
 use App\Services\Push\FcmGateway;
+use App\Services\Push\PushMessage;
 use App\Services\Routing\Contracts\RoutingGateway;
 use App\Services\Routing\RouteResult;
 use App\Support\Geo;
@@ -19,7 +18,6 @@ use Clickbar\Magellan\Data\Geometries\Point;
 use Clickbar\Magellan\Database\PostgisFunctions\ST;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -47,6 +45,7 @@ readonly class RideShareMatchingService
         private RoutingGateway $routing,
         private CheckoutService $checkout,
         private FcmGateway $pushGateway,
+        private TripNotifier $notifier,
     ) {}
 
     /**
@@ -182,7 +181,7 @@ readonly class RideShareMatchingService
         });
 
         if ($accepted !== null) {
-            $this->notifyCustomerOfMatch($accepted->trip, $accepted->customer);
+            $this->notifier->riderAssigned($accepted, $accepted->trip->rider);
         }
 
         return $accepted;
@@ -496,63 +495,23 @@ readonly class RideShareMatchingService
 
     private function notifyDriverOfJoinRequest(Trip $trip, TripPassenger $passenger, RideShareRequest $request, float $estimatedFare): void
     {
-        $driver = $trip->rider;
-
-        if ($driver === null) {
-            return;
-        }
-
-        $tokens = $driver->devices
-            ->filter(fn (UserDevice $device): bool => $device->active && filled($device->fcm_token))
-            ->map(fn (UserDevice $device): string => (string) $device->fcm_token)
-            ->unique()
-            ->values()
-            ->all();
-
-        try {
-            $this->pushGateway->sendToTokens(
-                array_values($tokens),
-                'New ride-share request',
-                'A passenger wants to join your ride-share trip. Accept or decline before the request expires.',
-                [
-                    'type' => 'ride_share_join_request',
-                    'trip_id' => (string) $trip->id,
-                    'trip_passenger_id' => (string) $passenger->id,
-                    'seats_requested' => (string) $request->seatsRequested,
-                    'pickup_address' => (string) $request->pickupAddress,
-                    'dropoff_address' => (string) $request->dropoffAddress,
-                    'detour_minutes' => (string) $passenger->detour_minutes,
-                    'estimated_fare' => (string) $estimatedFare,
-                    'currency_code' => $request->zone->currency_code,
-                    'expires_at' => (string) $passenger->request_expires_at?->toIso8601String(),
-                ],
-            );
-        } catch (\Throwable $e) {
-            Log::error('ride_share.driver_notification_failed', ['trip_id' => $trip->id, 'error' => $e->getMessage()]);
-        }
-    }
-
-    private function notifyCustomerOfMatch(Trip $trip, User $customer): void
-    {
-        $tokens = $customer->devices
-            ->filter(fn (UserDevice $device): bool => $device->active && filled($device->fcm_token))
-            ->map(fn (UserDevice $device): string => (string) $device->fcm_token)
-            ->unique()
-            ->values()
-            ->all();
-
-        try {
-            $this->pushGateway->sendToTokens(
-                array_values($tokens),
-                'You have been matched',
-                'Your driver accepted your ride-share request and is on the way.',
-                [
-                    'trip_id' => (string) $trip->id,
-                    'status' => 'matched',
-                ],
-            );
-        } catch (\Throwable $e) {
-            Log::error('ride_share.customer_notification_failed', ['trip_id' => $trip->id, 'error' => $e->getMessage()]);
-        }
+        $this->pushGateway->sendToUser($trip->rider, new PushMessage(
+            type: 'ride_share_join_request',
+            id: $trip->id,
+            title: 'New ride-share request',
+            body: 'A passenger wants to join your ride-share trip. Accept or decline before the request expires.',
+            data: [
+                'trip_id' => $trip->id,
+                'trip_passenger_id' => $passenger->id,
+                'seats_requested' => $request->seatsRequested,
+                'pickup_address' => $request->pickupAddress,
+                'dropoff_address' => $request->dropoffAddress,
+                'detour_minutes' => $passenger->detour_minutes,
+                'estimated_fare' => $estimatedFare,
+                'currency_code' => $request->zone->currency_code,
+            ],
+            interruptionLevel: 'time-sensitive',
+            expiresAt: $passenger->request_expires_at,
+        ));
     }
 }

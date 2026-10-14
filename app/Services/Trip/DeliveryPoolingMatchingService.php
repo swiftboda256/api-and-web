@@ -8,10 +8,10 @@ use App\Models\DeliveryStop;
 use App\Models\PricingRule;
 use App\Models\Trip;
 use App\Models\User;
-use App\Models\UserDevice;
 use App\Models\Zone;
 use App\Services\Checkout\CheckoutService;
 use App\Services\Push\FcmGateway;
+use App\Services\Push\PushMessage;
 use App\Services\Routing\Contracts\RoutingGateway;
 use App\Services\Routing\RouteResult;
 use App\Support\Geo;
@@ -19,8 +19,6 @@ use Clickbar\Magellan\Data\Geometries\Point;
 use Clickbar\Magellan\Database\PostgisFunctions\ST;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Throwable;
 
 /**
  * Finds an ongoing pooled-delivery trip a new delivery request can merge into, and attaches
@@ -45,6 +43,7 @@ readonly class DeliveryPoolingMatchingService
         private RoutingGateway $routing,
         private CheckoutService $checkout,
         private FcmGateway $pushGateway,
+        private TripNotifier $notifier,
     ) {}
 
     /**
@@ -296,7 +295,7 @@ readonly class DeliveryPoolingMatchingService
             $this->insertStopsAtGap($trip, $delivery, $winner['gap'], $winner['remaining_stops'], $pickup, $pickupAddress, $dropoff, $dropoffAddress);
 
             $this->notifyDriverOfNewDelivery($trip, $delivery);
-            $this->notifyCustomerOfMatch($trip, $sender);
+            $this->notifier->riderAssigned($delivery->setRelation('sender', $sender)->setRelation('trip', $trip), $trip->rider);
 
             return $delivery;
         });
@@ -359,55 +358,15 @@ readonly class DeliveryPoolingMatchingService
 
     private function notifyDriverOfNewDelivery(Trip $trip, DeliveryDetails $delivery): void
     {
-        $driver = $trip->rider;
-
-        if ($driver === null) {
-            return;
-        }
-
-        $tokens = $driver->devices
-            ->filter(fn (UserDevice $device): bool => $device->active && filled($device->fcm_token))
-            ->map(fn (UserDevice $device): string => (string) $device->fcm_token)
-            ->unique()
-            ->values()
-            ->all();
-
-        try {
-            $this->pushGateway->sendToTokens(
-                array_values($tokens),
-                'New delivery added to your route',
-                'A new delivery has been added to your pooled-delivery trip. Your route has been updated.',
-                [
-                    'trip_id' => (string) $trip->id,
-                    'delivery_details_id' => (string) $delivery->id,
-                ],
-            );
-        } catch (Throwable $e) {
-            Log::error('delivery_share.driver_notification_failed', ['trip_id' => $trip->id, 'error' => $e->getMessage()]);
-        }
-    }
-
-    private function notifyCustomerOfMatch(Trip $trip, User $sender): void
-    {
-        $tokens = $sender->devices
-            ->filter(fn (UserDevice $device): bool => $device->active && filled($device->fcm_token))
-            ->map(fn (UserDevice $device): string => (string) $device->fcm_token)
-            ->unique()
-            ->values()
-            ->all();
-
-        try {
-            $this->pushGateway->sendToTokens(
-                array_values($tokens),
-                'Your delivery has been matched',
-                'Your delivery has joined an ongoing pooled trip. A driver is on the way.',
-                [
-                    'trip_id' => (string) $trip->id,
-                    'status' => 'matched',
-                ],
-            );
-        } catch (Throwable $e) {
-            Log::error('delivery_share.sender_notification_failed', ['trip_id' => $trip->id, 'error' => $e->getMessage()]);
-        }
+        $this->pushGateway->sendToUser($trip->rider, new PushMessage(
+            type: 'delivery_share_added',
+            id: $trip->id,
+            title: 'New delivery added to your route',
+            body: 'A new delivery has been added to your pooled-delivery trip. Your route has been updated.',
+            data: [
+                'trip_id' => $trip->id,
+                'delivery_details_id' => $delivery->id,
+            ],
+        ));
     }
 }

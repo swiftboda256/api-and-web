@@ -2,7 +2,6 @@
 
 namespace App\Services\Trip;
 
-use App\Models\Configuration;
 use App\Models\DeliveryDetails;
 use App\Models\DeliveryStop;
 use App\Models\PricingRule;
@@ -14,14 +13,11 @@ use App\Models\TripFareBreakdown;
 use App\Models\TripPassenger;
 use App\Models\TripStop;
 use App\Models\User;
-use App\Models\UserDevice;
 use App\Models\VehicleType;
 use App\Models\Zone;
 use App\Services\Checkout\CheckoutService;
-use App\Services\Push\FcmGateway;
 use Carbon\CarbonImmutable;
 use Clickbar\Magellan\Data\Geometries\Point;
-use Clickbar\Magellan\Database\PostgisFunctions\ST;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Pagination\Paginator;
@@ -29,16 +25,16 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
-use Throwable;
 
 readonly class TripService
 {
     public function __construct(
-        private FcmGateway $pushGateway,
         private CheckoutService $checkout,
         private RideShareMatchingService $rideShareMatching,
         private DeliveryPoolingMatchingService $deliveryPoolingMatching,
         private PostedRideService $postedRides,
+        private TripDispatchService $dispatch,
+        private TripNotifier $notifier,
     ) {}
 
     /**
@@ -408,14 +404,7 @@ readonly class TripService
         if (! $requestedAt->isFuture()) {
             $trip->update(['status' => 'searching']);
 
-            try {
-                $this->dispatchToNearbyRiders($trip, $pickup, (int) $data['vehicle_type_id'], $data['pickup_address'] ?? null, $total, $zone->currency_code);
-            } catch (Throwable $e) {
-                Log::error('trip.dispatch_failed', [
-                    'trip_id' => $trip->id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
+            $this->dispatch->startSearch($trip);
         }
 
         return $passenger->load(['customer', 'fareBreakdown', 'trip.vehicleType', 'stops']);
@@ -489,7 +478,7 @@ readonly class TripService
      * No ongoing trip took the request: start a brand-new ride-share trip seeded by this
      * passenger -- a new one, or one moved off a trip whose driver didn't accept them. It's
      * dispatched to nearby idle drivers exactly like a solo ride (reusing
-     * dispatchToNearbyRiders/RiderTripService::accept unchanged); further passengers then
+     * TripDispatchService/RiderTripService::accept unchanged); further passengers then
      * join it mid-route through RideShareMatchingService.
      */
     private function startRideShareTrip(RideShareRequest $request, PricingRule $pricingRule, ?TripPassenger $passenger, CarbonImmutable $requestedAt): TripPassenger
@@ -578,14 +567,7 @@ readonly class TripService
 
         $trip->update(['status' => 'searching']);
 
-        try {
-            $this->dispatchToNearbyRiders($trip, $request->pickup, $request->vehicleTypeId, $request->pickupAddress, $this->checkout->roundFare($fare['fare']), $request->zone->currency_code);
-        } catch (Throwable $e) {
-            Log::error('trip.dispatch_failed', [
-                'trip_id' => $trip->id,
-                'error' => $e->getMessage(),
-            ]);
-        }
+        $this->dispatch->startSearch($trip);
 
         return $passenger;
     }
@@ -676,14 +658,7 @@ readonly class TripService
         if (! $requestedAt->isFuture()) {
             $trip->update(['status' => 'searching']);
 
-            try {
-                $this->dispatchToNearbyRiders($trip, $pickup, (int) $data['vehicle_type_id'], $data['pickup_address'] ?? null, $total, $zone->currency_code);
-            } catch (Throwable $e) {
-                Log::error('trip.dispatch_failed', [
-                    'trip_id' => $trip->id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
+            $this->dispatch->startSearch($trip);
         }
 
         return $delivery->load(['sender', 'trip.vehicleType', 'stops']);
@@ -792,14 +767,7 @@ readonly class TripService
         if (! $requestedAt->isFuture()) {
             $trip->update(['status' => 'searching']);
 
-            try {
-                $this->dispatchToNearbyRiders($trip, $pickup, (int) $data['vehicle_type_id'], $data['pickup_address'] ?? null, $fare['fare'], $zone->currency_code);
-            } catch (Throwable $e) {
-                Log::error('trip.dispatch_failed', [
-                    'trip_id' => $trip->id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
+            $this->dispatch->startSearch($trip);
         }
 
         return $delivery->load(['sender', 'trip.vehicleType', 'stops']);
@@ -914,6 +882,7 @@ readonly class TripService
         });
 
         $this->releaseRiderIfTripCancelled($passenger->trip);
+        $this->closeOffersIfTripCancelled($passenger->trip);
         $this->notifyRiderOfCustomerCancellation($passenger);
 
         return $passenger->refresh()->load($this->passengerEagerLoads());
@@ -965,6 +934,7 @@ readonly class TripService
         });
 
         $this->releaseRiderIfTripCancelled($delivery->trip);
+        $this->closeOffersIfTripCancelled($delivery->trip);
         $this->notifyRiderOfCustomerCancellation($delivery);
 
         return $delivery->refresh()->load($this->deliveryEagerLoads());
@@ -1064,83 +1034,12 @@ readonly class TripService
     }
 
     /**
-     * A future-scheduled trip becoming due always has exactly one seed passenger/delivery --
-     * matching into an ongoing trip only ever happens for immediate (non-future) requests --
-     * so its pickup stop and fare are this sole item's.
+     * A future-scheduled trip has become due (already moved to 'searching' by
+     * DispatchScheduledTripJob): start looking for a rider.
      */
     public function dispatchDueTrip(Trip $trip): void
     {
-        $isRide = in_array($trip->type, ['ride', 'ride_share', 'posted_ride'], true);
-
-        $item = $isRide
-            ? TripPassenger::query()->where('trip_id', $trip->id)->with('fareBreakdown')->oldest('requested_at')->first()
-            : DeliveryDetails::query()->where('trip_id', $trip->id)->oldest('requested_at')->first();
-
-        $pickupStop = $isRide
-            ? TripStop::query()->where('trip_id', $trip->id)->where('stop_type', 'pickup')->whereNotNull('sequence')->orderBy('sequence')->first()
-            : DeliveryStop::query()->where('trip_id', $trip->id)->where('stop_type', 'pickup')->whereNotNull('sequence')->orderBy('sequence')->first();
-
-        if ($item === null || $pickupStop?->location === null) {
-            return;
-        }
-
-        // Ride/ride_share's fare lives on the passenger's fare breakdown now; delivery keeps
-        // it on the delivery record directly.
-        $estimatedFare = $item instanceof TripPassenger ? $item->fareBreakdown?->estimated_fare : $item->estimated_fare;
-        $currencyCode = $item instanceof TripPassenger ? $item->fareBreakdown?->currency_code : $item->currency_code;
-
-        if ($estimatedFare === null || $currencyCode === null) {
-            return;
-        }
-
-        $this->dispatchToNearbyRiders(
-            $trip,
-            $pickupStop->location,
-            (int) $trip->vehicle_type_id,
-            $pickupStop->address,
-            (float) $estimatedFare,
-            $currencyCode,
-        );
-    }
-
-    private function dispatchToNearbyRiders(Trip $trip, Point $pickup, int $vehicleTypeId, ?string $pickupAddress, float $estimatedFare, string $currencyCode): void
-    {
-        $radiusMeters = (float) Configuration::get('dispatch_radius_km', 5) * 1000;
-
-        $riderProfiles = RiderProfile::query()
-            ->where('availability_status', 'online')
-            ->whereNotNull('current_location')
-            ->withinWalletLimit()
-            ->whereHas('vehicle', fn ($query) => $query->where('vehicle_type_id', $vehicleTypeId)->where('status', 'approved'))
-            ->where(ST::distanceSphere('current_location', $pickup), '<=', $radiusMeters)
-            ->with('user.devices')
-            ->get();
-
-        $tokens = $riderProfiles
-            ->flatMap(fn (RiderProfile $riderProfile) => $riderProfile->user->devices)
-            ->filter(fn (UserDevice $device): bool => $device->active && filled($device->fcm_token))
-            ->map(fn (UserDevice $device): string => (string) $device->fcm_token)
-            ->unique()
-            ->values()
-            ->all();
-
-        $body = $pickupAddress
-            ? "New {$trip->type} request near {$pickupAddress}"
-            : "New {$trip->type} request nearby";
-
-        $this->pushGateway->sendToTokens(
-            array_values($tokens),
-            'New trip request',
-            $body,
-            [
-                'trip_id' => (string) $trip->id,
-                'type' => $trip->type,
-                'pickup_latitude' => (string) $pickup->getLatitude(),
-                'pickup_longitude' => (string) $pickup->getLongitude(),
-                'estimated_fare' => (string) $estimatedFare,
-                'currency_code' => $currencyCode,
-            ],
-        );
+        $this->dispatch->startSearch($trip);
     }
 
     /**
@@ -1161,41 +1060,20 @@ readonly class TripService
             ->update(['availability_status' => 'online']);
     }
 
+    /**
+     * The customer's cancellation cancelled the whole trip while it was still searching:
+     * riders still ringing for it stop.
+     */
+    private function closeOffersIfTripCancelled(Trip $trip): void
+    {
+        if ($trip->status === 'cancelled') {
+            $this->dispatch->closeOffers($trip, 'cancelled');
+        }
+    }
+
     private function notifyRiderOfCustomerCancellation(TripPassenger|DeliveryDetails $cancelled): void
     {
-        $rider = $cancelled->trip->rider;
-
-        if ($rider === null) {
-            return;
-        }
-
-        try {
-            $tokens = $rider->devices
-                ->filter(fn (UserDevice $device): bool => $device->active && filled($device->fcm_token))
-                ->map(fn (UserDevice $device): string => (string) $device->fcm_token)
-                ->unique()
-                ->values()
-                ->all();
-
-            $isDelivery = $cancelled instanceof DeliveryDetails;
-
-            $this->pushGateway->sendToTokens(
-                array_values($tokens),
-                $isDelivery ? 'Delivery cancelled' : 'Ride cancelled',
-                $isDelivery ? 'The sender cancelled their delivery.' : 'The passenger cancelled their ride.',
-                [
-                    'trip_id' => (string) $cancelled->trip_id,
-                    ($isDelivery ? 'delivery_details_id' : 'trip_passenger_id') => (string) $cancelled->id,
-                    'status' => 'cancelled',
-                    'trip_status' => (string) $cancelled->trip->fresh()?->status,
-                ],
-            );
-        } catch (Throwable $e) {
-            Log::error('trip.customer_cancellation_notification_failed', [
-                'trip_id' => $cancelled->trip_id,
-                'error' => $e->getMessage(),
-            ]);
-        }
+        $this->notifier->bookingCancelled($cancelled);
     }
 
     private function generateTripNumber(): string

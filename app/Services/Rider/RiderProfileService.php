@@ -7,6 +7,7 @@ use App\Models\RiderProfile;
 use App\Models\User;
 use App\Models\Vehicle;
 use App\Models\VehicleImage;
+use App\Services\Trip\NearDestinationService;
 use Clickbar\Magellan\Data\Geometries\Point;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Arr;
@@ -18,12 +19,16 @@ readonly class RiderProfileService
 {
     private const array DOCUMENT_TYPES = ['national_id', 'driving_license'];
 
+    public function __construct(
+        private NearDestinationService $nearDestination,
+    ) {}
+
     /**
      * @param  array<string, mixed>  $data
      */
     public function updateProfile(User $user, array $data): User
     {
-        return DB::transaction(function () use ($user, $data): User {
+        $updated = DB::transaction(function () use ($user, $data): User {
             $user->fill(Arr::only($data, ['first_name', 'last_name', 'other_name', 'email']));
 
             if (! empty($data['avatar'])) {
@@ -87,6 +92,14 @@ readonly class RiderProfileService
 
             return $user->setRelation('riderProfile', $riderProfile->fresh(['vehicle.images']));
         });
+
+        // A location ping from the rider app can also be the one that brings a passenger
+        // within reach of their drop-off.
+        if ($updated->riderProfile?->current_location !== null && ! empty($data['latitude']) && ! empty($data['longitude'])) {
+            $this->nearDestination->checkRider($user->id, $updated->riderProfile->current_location);
+        }
+
+        return $updated;
     }
 
     public function generateRiderRef(int $riderProfileId, string $districtCode): string

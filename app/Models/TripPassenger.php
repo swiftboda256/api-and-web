@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 /**
  * @property 'requested'|'pending_approval'|'matched'|'arrived_pickup'|'picked_up'|'arrived_dropoff'|'dropped_off'|'cancelled' $status
  * @property CarbonImmutable|null $picked_up_at
+ * @property CarbonImmutable|null $near_destination_notified_at
  * @property CarbonImmutable|null $request_expires_at
  * @property list<int>|null $declined_trip_ids
  */
@@ -31,6 +32,7 @@ class TripPassenger extends BaseModel
         'declined_trip_ids',
         'matched_at',
         'picked_up_at',
+        'near_destination_notified_at',
         'dropped_off_at',
         'cancelled_at',
         'cancelled_by',
@@ -50,6 +52,7 @@ class TripPassenger extends BaseModel
             'declined_trip_ids' => 'array',
             'matched_at' => 'datetime',
             'picked_up_at' => 'datetime',
+            'near_destination_notified_at' => 'datetime',
             'dropped_off_at' => 'datetime',
             'cancelled_at' => 'datetime',
         ];

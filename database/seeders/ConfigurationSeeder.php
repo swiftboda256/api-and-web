@@ -71,6 +71,36 @@ class ConfigurationSeeder extends Seeder
         );
 
         Configuration::query()->firstOrCreate(
+            ['key' => 'dispatch_offer_window_seconds'],
+            [
+                'value' => 30,
+                'group' => 'trip',
+                'description' => 'Seconds a job offer rings on a rider\'s phone. If nobody accepts in that time, the trip is offered to riders who have become available since.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'dispatch_search_timeout_minutes'],
+            [
+                'value' => 5,
+                'group' => 'trip',
+                'description' => 'Minutes a trip searches for a rider before it is cancelled and the customer is told no riders were found.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'near_destination_radius_meters'],
+            [
+                'value' => 400,
+                'group' => 'trip',
+                'description' => 'Distance in meters from a passenger\'s drop-off at which they get the one "almost there" push.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
             ['key' => 'search_radius_km'],
             [
                 'value' => 50,
