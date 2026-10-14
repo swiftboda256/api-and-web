@@ -2,7 +2,10 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Configuration;
+use App\Models\DeliveryDetails;
 use App\Models\DeliveryStop;
+use App\Models\Transaction;
 use App\Models\Trip;
 use App\Models\TripFareBreakdown;
 use App\Models\TripPassenger;
@@ -22,9 +25,15 @@ use Illuminate\Support\Facades\DB;
  * columns populated (+ 2 delivery_stops). ride_share/delivery_share trips are left alone --
  * they already create trip_passengers/delivery pooling rows live.
  *
- * Idempotent and safe to re-run: each side is gated on "not yet backfilled" (no
- * trip_passengers row for rides, a null sender_id for deliveries), so already-processed
- * trips are skipped. Purely additive -- never touches the legacy trips columns, which stay
+ * Also re-points every transaction still linked to a legacy trip (trip payments, payouts,
+ * commissions, reversals) at the booking that replaces it, since payment confirmations
+ * and booking history now look transactions up by TripPassenger/DeliveryDetails. And a
+ * trip still searching when this runs either joins the new dispatch (requested within the
+ * search timeout) or is cancelled as a search nobody answered.
+ *
+ * Idempotent and safe to re-run: each step is gated on "not yet done" (no trip_passengers
+ * row for rides, a null sender_id for deliveries, a Trip reference on transactions), so
+ * already-processed rows are skipped. Never touches the legacy trips columns, which stay
  * in place until a separate, later migration drops them once this command reports zero
  * remaining trips of either kind.
  */
@@ -52,9 +61,14 @@ class BackfillTripPassengerModel extends Command
      */
     private array $unresolvedFareTrips = [];
 
+    private int $staleSearchesCancelled = 0;
+
     public function handle(CheckoutService $checkoutService): int
     {
         $this->checkoutService = $checkoutService;
+        // The command instance can be reused within one process, so start every run clean.
+        $this->unresolvedFareTrips = [];
+        $this->staleSearchesCancelled = 0;
         $dryRun = (bool) $this->option('dry-run');
 
         $rideBackfilled = 0;
@@ -67,7 +81,9 @@ class BackfillTripPassengerModel extends Command
             ->with(['zone', 'fareBreakdowns'])
             ->chunkById(100, function ($trips) use ($dryRun, &$rideBackfilled): void {
                 foreach ($trips as $trip) {
-                    if (! $dryRun) {
+                    if ($dryRun) {
+                        $this->staleSearchesCancelled += (int) $this->isStaleSearch($trip);
+                    } else {
                         $this->backfillRideTrip($trip);
                     }
 
@@ -80,7 +96,7 @@ class BackfillTripPassengerModel extends Command
             ->where(fn ($query) => $query
                 ->whereDoesntHave('deliveries')
                 ->orWhereHas('deliveries', fn ($query) => $query->whereNull('sender_id')))
-            ->with('deliveries')
+            ->with(['deliveries', 'fareBreakdowns'])
             ->chunkById(100, function ($trips) use ($dryRun, &$deliveryBackfilled, &$deliveryMissingDetails): void {
                 foreach ($trips as $trip) {
                     if ($trip->deliveries->isEmpty()) {
@@ -89,7 +105,9 @@ class BackfillTripPassengerModel extends Command
                         continue;
                     }
 
-                    if (! $dryRun) {
+                    if ($dryRun) {
+                        $this->staleSearchesCancelled += (int) $this->isStaleSearch($trip);
+                    } else {
                         $this->backfillDeliveryTrip($trip);
                     }
 
@@ -99,6 +117,17 @@ class BackfillTripPassengerModel extends Command
 
         $label = $dryRun ? 'Would backfill' : 'Backfilled';
         $this->info("{$label} {$rideBackfilled} ride trip(s) and {$deliveryBackfilled} delivery trip(s).");
+
+        [$repointed, $skippedTransactions] = $this->repointTripTransactions($dryRun);
+        $this->info(($dryRun ? 'Would re-point' : 'Re-pointed')." {$repointed} trip transaction(s) to their booking.");
+
+        if ($skippedTransactions > 0) {
+            $this->warn("{$skippedTransactions} trip transaction(s) left linked to their trip -- the trip is not backfilled yet or does not have exactly one booking.");
+        }
+
+        if ($this->staleSearchesCancelled > 0) {
+            $this->info(($dryRun ? 'Would cancel' : 'Cancelled')." {$this->staleSearchesCancelled} trip(s) left searching past the search timeout.");
+        }
 
         if ($this->unresolvedFareTrips !== []) {
             $this->warn(count($this->unresolvedFareTrips).' ride trip(s) had no resolvable zone/pricing rule -- fare breakdown left without base/distance/time fare: '.implode(', ', $this->unresolvedFareTrips));
@@ -132,9 +161,10 @@ class BackfillTripPassengerModel extends Command
                 'trip_id' => $trip->id,
                 'customer_id' => $trip->customer_id,
                 'seats_requested' => 1,
-                'status' => self::STATUS_MAP[$trip->status],
+                'status' => $this->bookingStatus($trip),
                 'distance_km' => $trip->distance_km,
                 'duration_minutes' => $trip->duration_minutes,
+                'promo_code_id' => $trip->promo_code_id,
                 'requested_at' => $trip->requested_at,
                 'matched_at' => $trip->accepted_at,
                 'picked_up_at' => $trip->started_at,
@@ -144,19 +174,20 @@ class BackfillTripPassengerModel extends Command
                 'cancellation_reason_id' => $trip->cancellation_reason_id,
             ]);
 
-            // Legacy trips may already have a trip-level breakdown row (from when the table
-            // was one row per trip) -- reuse it for this passenger rather than leaving a
-            // second, passenger-less row on the same trip.
+            // Legacy trips have a trip-level breakdown row written at booking, holding the
+            // fare components actually charged -- reuse it for this passenger, keeping those
+            // components as recorded. They're only recalculated for a trip that has none.
             $legacyBreakdown = $trip->fareBreakdowns->firstWhere('passenger_id', null);
 
-            $fareBreakdown = $legacyBreakdown ?? new TripFareBreakdown(['trip_id' => $trip->id]);
-
-            $fareComponents = $this->recalculatedFareComponents($trip);
+            $fareBreakdown = $legacyBreakdown ?? new TripFareBreakdown([
+                'trip_id' => $trip->id,
+                'discount_amount' => $trip->discount_amount ?? 0,
+                ...$this->recalculatedFareComponents($trip),
+            ]);
 
             $fareBreakdown->fill([
                 'passenger_id' => $passenger->id,
                 'customer_id' => $trip->customer_id,
-                ...$fareComponents,
                 'estimated_fare' => $trip->estimated_fare,
                 'final_fare' => $trip->final_fare,
                 'currency_code' => $trip->currency_code,
@@ -164,20 +195,27 @@ class BackfillTripPassengerModel extends Command
                 'payment_status' => $trip->payment_status,
             ]);
 
-            // Only meaningful when there are real components to total -- either recomputed
-            // above or already recorded on the reused legacy row.
-            $hasComponents = $fareComponents !== [] || $legacyBreakdown !== null;
+            // Only meaningful when there are real components to total. Rounding only ever
+            // rounds down, so a total below the fare charged means the recorded components
+            // don't explain that fare -- fall back to the fare itself rather than record a
+            // pre-rounding figure lower than what the customer paid.
+            if ($fareBreakdown->base_fare !== null) {
+                $estimated = $this->totalOfCharges(
+                    (float) $fareBreakdown->base_fare,
+                    (float) $fareBreakdown->distance_fare,
+                    (float) $fareBreakdown->time_fare,
+                    (float) $fareBreakdown->surge_amount,
+                    discountAmount: (float) $fareBreakdown->discount_amount,
+                );
 
-            $fareBreakdown->final_fare_before_rounding = ! $hasComponents ? null : $this->totalOfCharges(
-                (float) $fareBreakdown->base_fare,
-                (float) $fareBreakdown->distance_fare,
-                (float) $fareBreakdown->time_fare,
-                (float) $fareBreakdown->surge_amount,
-                (float) $fareBreakdown->cancellation_fee,
-                (float) $fareBreakdown->discount_amount,
-            );
+                $fareBreakdown->estimated_fare_before_rounding = max($estimated, (float) $trip->estimated_fare);
+                $fareBreakdown->final_fare_before_rounding = $trip->final_fare === null ? null
+                    : max(round($estimated + (float) $fareBreakdown->cancellation_fee, 2), (float) $trip->final_fare);
+            }
 
             $fareBreakdown->save();
+
+            $this->resolveSearchingTrip($trip, $passenger);
 
             TripStop::query()->create([
                 'trip_id' => $trip->id,
@@ -210,7 +248,13 @@ class BackfillTripPassengerModel extends Command
 
             $delivery->update([
                 'sender_id' => $trip->customer_id,
-                'status' => self::STATUS_MAP[$trip->status],
+                // Deliveries keep their fare on the delivery row itself; the base fare was
+                // only ever recorded on the legacy trip-level breakdown row, which is left in
+                // place as the record of the trip's commission and rider earning.
+                'base_fare_amount' => $trip->fareBreakdowns->firstWhere('passenger_id', null)?->base_fare,
+                'promo_code_id' => $trip->promo_code_id,
+                'discount_amount' => $trip->discount_amount ?? 0,
+                'status' => $this->bookingStatus($trip),
                 'pickup_location' => $trip->pickup_location,
                 'pickup_address' => $trip->pickup_address,
                 'dropoff_location' => $trip->dropoff_location,
@@ -250,7 +294,107 @@ class BackfillTripPassengerModel extends Command
                 'address' => $trip->dropoff_address,
                 'arrived_at' => $this->dropoffArrivedAt($trip),
             ]);
+
+            $this->resolveSearchingTrip($trip, $delivery);
         });
+    }
+
+    /**
+     * Legacy ride/delivery trips only ever had the statuses in STATUS_MAP ('open' is posted
+     * rides only), so anything else means unexpected data -- fail loudly rather than guess.
+     */
+    private function bookingStatus(Trip $trip): string
+    {
+        return self::STATUS_MAP[$trip->status]
+            ?? throw new \UnexpectedValueException("Trip {$trip->trip_number} has unexpected status '{$trip->status}'.");
+    }
+
+    /**
+     * A trip still looking for a rider has no search start (the dispatch that sets one is
+     * new), so it would never ring riders or time out. One requested within the search
+     * timeout gets a search start of when it was requested, handing it to
+     * ProcessTripDispatch like any other. One requested longer ago is a search nobody
+     * answered -- it's cancelled with its booking, quietly, rather than ringing riders and
+     * telling the customer about a request they made long ago.
+     */
+    private function resolveSearchingTrip(Trip $trip, TripPassenger|DeliveryDetails $booking): void
+    {
+        if ($trip->status !== 'searching' || $trip->search_started_at !== null) {
+            return;
+        }
+
+        if (! $this->isStaleSearch($trip)) {
+            Trip::query()->whereKey($trip->id)->update(['search_started_at' => $trip->requested_at]);
+
+            return;
+        }
+
+        Trip::query()->whereKey($trip->id)->update(['status' => 'cancelled', 'cancelled_at' => now()]);
+        $booking->update(['status' => 'cancelled', 'cancelled_at' => now()]);
+        $this->staleSearchesCancelled++;
+    }
+
+    /**
+     * A trip left searching for longer than the search timeout -- nobody answered it.
+     */
+    private function isStaleSearch(Trip $trip): bool
+    {
+        return $trip->status === 'searching'
+            && $trip->search_started_at === null
+            && $trip->requested_at->addMinutes((int) Configuration::get('dispatch_search_timeout_minutes', 5))->isPast();
+    }
+
+    /**
+     * Points every transaction still linked to a legacy trip at the one booking that now
+     * stands for it -- the trip_passengers row of a 'ride', the delivery_details row of a
+     * 'delivery'. Returns [re-pointed, skipped]; skipped transactions belong to a trip that
+     * isn't backfilled yet or doesn't have exactly one booking, and are left untouched.
+     *
+     * @return array{0: int, 1: int}
+     */
+    private function repointTripTransactions(bool $dryRun): array
+    {
+        $repointed = 0;
+        $skipped = 0;
+
+        $tripIds = Transaction::query()
+            ->where('reference_type', Trip::class)
+            ->whereNotNull('reference_id')
+            ->distinct()
+            ->pluck('reference_id');
+
+        foreach ($tripIds->chunk(100) as $chunk) {
+            $trips = Trip::query()->whereKey($chunk)->withCount(['passengers', 'deliveries'])->with(['passengers', 'deliveries'])->get()->keyBy('id');
+
+            foreach ($chunk as $tripId) {
+                $trip = $trips->get($tripId);
+                $query = Transaction::query()->where('reference_type', Trip::class)->where('reference_id', $tripId);
+
+                // A dry run wrote no bookings above, so it counts what a real run would have.
+                $eligible = match ($trip?->type) {
+                    'ride' => $trip->passengers_count === 1 || ($dryRun && $trip->passengers_count === 0),
+                    'delivery' => $trip->deliveries_count === 1 && ($dryRun || $trip->deliveries->first()->sender_id !== null),
+                    default => false,
+                };
+
+                if (! $eligible) {
+                    $skipped += $query->count();
+
+                    continue;
+                }
+
+                if ($dryRun) {
+                    $repointed += $query->count();
+
+                    continue;
+                }
+
+                $booking = $trip->type === 'ride' ? $trip->passengers->first() : $trip->deliveries->first();
+                $repointed += $query->update(['reference_type' => $booking::class, 'reference_id' => $booking->id]);
+            }
+        }
+
+        return [$repointed, $skipped];
     }
 
     private function totalOfCharges(

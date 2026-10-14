@@ -56,7 +56,8 @@ test('backfills exactly one pickup and one dropoff stop per solo ride trip', fun
 });
 
 test('maps every trip status to the correct passenger status', function (string $tripStatus, string $expectedPassengerStatus) {
-    $trip = Trip::factory()->create(['type' => 'ride', 'status' => $tripStatus]);
+    // Requested just now, so a 'searching' trip is still within the search timeout.
+    $trip = Trip::factory()->create(['type' => 'ride', 'status' => $tripStatus, 'requested_at' => now()]);
 
     $this->artisan('trips:backfill-passenger-model')->assertExitCode(0);
 

@@ -52,7 +52,8 @@ test('backfills exactly one pickup and one dropoff delivery_stops row', function
 });
 
 test('maps every trip status to the correct delivery status', function (string $tripStatus, string $expectedDeliveryStatus) {
-    $trip = Trip::factory()->create(['type' => 'delivery', 'status' => $tripStatus]);
+    // Requested just now, so a 'searching' trip is still within the search timeout.
+    $trip = Trip::factory()->create(['type' => 'delivery', 'status' => $tripStatus, 'requested_at' => now()]);
     $delivery = DeliveryDetails::factory()->for($trip)->create();
 
     $this->artisan('trips:backfill-passenger-model')->assertExitCode(0);

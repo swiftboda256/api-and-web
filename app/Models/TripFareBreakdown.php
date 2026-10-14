@@ -4,6 +4,12 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * base_fare is nullable: a booking backfilled from a legacy trip with no recorded fare
+ * components and no resolvable pricing rule has none.
+ *
+ * @property numeric-string|null $base_fare
+ */
 class TripFareBreakdown extends BaseModel
 {
     protected $fillable = [
