@@ -13,6 +13,9 @@ use App\Models\VehicleType;
 use App\Services\Auth\UserAccountService;
 use App\Services\Rider\RiderKycService;
 use BezhanSalleh\FilamentShield\Traits\HasPageShield;
+use Filament\Actions\Concerns\InteractsWithActions;
+use Filament\Actions\Contracts\HasActions;
+use Filament\Actions\DeleteAction;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -29,6 +32,7 @@ use Livewire\WithPagination;
 class RiderDetails extends Page
 {
     use HasPageShield;
+    use InteractsWithActions;
     use WithPagination;
 
     private const array TRIP_SORT_COLUMNS = ['fare', 'requested_at'];
@@ -374,6 +378,26 @@ class RiderDetails extends Page
     {
         $this->rejecting = "document:{$documentId}";
         $this->rejectionReason = '';
+    }
+
+    public function deleteDocumentAction(): DeleteAction
+    {
+        return DeleteAction::make('deleteDocument')
+            ->record(fn (array $arguments): Document => $this->findDocument($this->rider(), (int) $arguments['documentId']))
+            ->modalHeading('Delete document')
+            ->successNotificationTitle('Document deleted')
+            ->action(function (Document $record, RiderKycService $riderKycService): void {
+                /** @var User $admin */
+                $admin = Auth::user();
+
+                $rider = $this->rider();
+
+                $riderKycService->deleteDocument($record, $rider->riderProfile, $admin);
+
+                if ($this->previewingDocumentId === $record->id) {
+                    $this->previewingDocumentId = null;
+                }
+            });
     }
 
     public function rejectVehicle(): void

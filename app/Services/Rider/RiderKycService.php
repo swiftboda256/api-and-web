@@ -44,6 +44,19 @@ readonly class RiderKycService
     }
 
     /**
+     * Soft-deletes the document only. The underlying file is kept on disk until
+     * a force-delete is implemented for documents.
+     */
+    public function deleteDocument(Document $document, RiderProfile $riderProfile, User $reviewer): void
+    {
+        DB::transaction(function () use ($document, $riderProfile, $reviewer): void {
+            $document->delete();
+
+            $this->recomputeKycStatus($riderProfile, $reviewer);
+        });
+    }
+
+    /**
      * A rider's overall KYC status is derived from their required documents:
      * any rejection fails the whole review, otherwise it's only approved once
      * every required document has been individually approved.
