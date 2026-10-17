@@ -3,6 +3,7 @@
 namespace App\Services\Push;
 
 use App\Models\User;
+use App\Notifications\PushEventNotification;
 use Illuminate\Support\Facades\Log;
 use Kreait\Firebase\Contract\Messaging;
 use Kreait\Firebase\Messaging\SendReport;
@@ -24,6 +25,10 @@ class FcmGateway
      */
     public function sendToUser(?User $user, PushMessage $message): void
     {
+        if ($user !== null && $message->persist && ! $message->silent) {
+            $user->notify(new PushEventNotification($message));
+        }
+
         $token = $user?->devices()
             ->where('active', true)
             ->whereNotNull('fcm_token')

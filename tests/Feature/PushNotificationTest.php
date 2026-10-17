@@ -325,6 +325,53 @@ test('a location sent through the profile update also triggers the near-destinat
     expect(pushesTo($this, $this->customer, 'trip_near_destination'))->toHaveCount(1);
 });
 
+test('sending a push also writes it to the user\'s database notifications', function () {
+    $messaging = Mockery::mock(Messaging::class);
+    $messaging->shouldReceive('sendMulticast')->once()->andReturn(MulticastSendReport::withItems([]));
+
+    $user = User::factory()->create();
+    UserDevice::query()->create(['user_id' => $user->id, 'device_type' => 'android', 'device_id' => 'd', 'fcm_token' => 'token', 'active' => true]);
+
+    (new FcmGateway($messaging))->sendToUser($user, new PushMessage(
+        type: 'trip_completed',
+        id: 42,
+        title: 'You have arrived',
+        body: 'Thanks for riding.',
+        data: ['trip_id' => 7],
+    ));
+
+    expect($user->notifications()->count())->toBe(1);
+
+    $notification = $user->notifications()->first();
+    expect($notification->type)->toBe('trip_completed')
+        ->and($notification->data)->toMatchArray(['id' => 42, 'title' => 'You have arrived', 'body' => 'Thanks for riding.', 'trip_id' => 7])
+        ->and($notification->read_at)->toBeNull();
+});
+
+test('a silent push is not written to the database', function () {
+    $messaging = Mockery::mock(Messaging::class);
+    $messaging->shouldReceive('sendMulticast')->once()->andReturn(MulticastSendReport::withItems([]));
+
+    $user = User::factory()->create();
+    UserDevice::query()->create(['user_id' => $user->id, 'device_type' => 'android', 'device_id' => 'd', 'fcm_token' => 'token', 'active' => true]);
+
+    (new FcmGateway($messaging))->sendToUser($user, new PushMessage(type: 'ride_offer_cancelled', id: 9, silent: true));
+
+    expect($user->notifications()->count())->toBe(0);
+});
+
+test('a push opted out of persistence is not written to the database', function () {
+    $messaging = Mockery::mock(Messaging::class);
+    $messaging->shouldReceive('sendMulticast')->once()->andReturn(MulticastSendReport::withItems([]));
+
+    $user = User::factory()->create();
+    UserDevice::query()->create(['user_id' => $user->id, 'device_type' => 'android', 'device_id' => 'd', 'fcm_token' => 'token', 'active' => true]);
+
+    (new FcmGateway($messaging))->sendToUser($user, new PushMessage(type: 'ride_offer', id: 9, title: 'New job', body: 'Nearby', persist: false));
+
+    expect($user->notifications()->count())->toBe(0);
+});
+
 test('deliveries get no near-destination push', function () {
     $trip = Trip::factory()->delivery()->create([
         'zone_id' => $this->zone->id,

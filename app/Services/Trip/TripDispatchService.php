@@ -262,6 +262,9 @@ readonly class TripDispatchService
             expiresAt: $expiresAt,
             badge: $badge,
             contentAvailable: true,
+            // A ride offer repeats every dispatch round for every eligible rider -- it
+            // shouldn't pile up as notification history, only ring/surface in the moment.
+            persist: false,
         );
     }
 
