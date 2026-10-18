@@ -510,7 +510,10 @@ readonly class RideShareMatchingService
                 'estimated_fare' => $estimatedFare,
                 'currency_code' => $request->zone->currency_code,
             ],
+            sound: 'request_alert.caf',
             interruptionLevel: 'time-sensitive',
+            ttlSeconds: max(1, (int) now()->diffInSeconds($passenger->request_expires_at, true)),
+            collapseKey: "ride_share_join_{$passenger->id}",
             expiresAt: $passenger->request_expires_at,
         ));
     }

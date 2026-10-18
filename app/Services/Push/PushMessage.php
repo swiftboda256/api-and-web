@@ -48,6 +48,31 @@ final readonly class PushMessage
     ) {}
 
     /**
+     * A copy with $badge set -- used by FcmGateway to fill in the recipient's unread count
+     * on pushes that don't already carry a more specific badge (e.g. ride_offer's live
+     * ringing-offer count).
+     */
+    public function withBadge(int $badge): self
+    {
+        return new self(
+            type: $this->type,
+            id: $this->id,
+            title: $this->title,
+            body: $this->body,
+            data: $this->data,
+            sound: $this->sound,
+            interruptionLevel: $this->interruptionLevel,
+            silent: $this->silent,
+            ttlSeconds: $this->ttlSeconds,
+            collapseKey: $this->collapseKey,
+            expiresAt: $this->expiresAt,
+            badge: $badge,
+            contentAvailable: $this->contentAvailable,
+            persist: $this->persist,
+        );
+    }
+
+    /**
      * @return array<non-empty-string, string>
      */
     public function payloadData(): array

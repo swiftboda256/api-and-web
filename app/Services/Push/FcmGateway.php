@@ -3,9 +3,12 @@
 namespace App\Services\Push;
 
 use App\Models\User;
+use App\Models\UserDevice;
 use App\Notifications\PushEventNotification;
 use Illuminate\Support\Facades\Log;
 use Kreait\Firebase\Contract\Messaging;
+use Kreait\Firebase\Exception\Messaging\InvalidArgument;
+use Kreait\Firebase\Exception\Messaging\NotFound;
 use Kreait\Firebase\Messaging\SendReport;
 use Throwable;
 
@@ -27,6 +30,13 @@ class FcmGateway
     {
         if ($user !== null && $message->persist && ! $message->silent) {
             $user->notify(new PushEventNotification($message));
+        }
+
+        // Most pushes don't set their own badge -- default it to the recipient's unread
+        // count (now including anything just persisted above). A silent push has no alert
+        // to badge, and some pushes (e.g. a ride offer) carry a more specific count already.
+        if ($user !== null && $message->badge === null && ! $message->silent) {
+            $message = $message->withBadge($user->unreadNotifications()->count());
         }
 
         $token = $user?->devices()
@@ -58,14 +68,29 @@ class FcmGateway
             return;
         }
 
-        if ($report->hasFailures()) {
-            Log::warning('fcm.send_failures', [
-                'type' => $message->type,
-                'failures' => collect($report->failures()->getItems())->map(fn (SendReport $item): array => [
-                    'target' => $item->target()->value(),
-                    'error' => $item->error()?->getMessage(),
-                ])->all(),
-            ]);
+        if (! $report->hasFailures()) {
+            return;
+        }
+
+        $failures = $report->failures()->getItems();
+
+        Log::warning('fcm.send_failures', [
+            'type' => $message->type,
+            'failures' => collect($failures)->map(fn (SendReport $item): array => [
+                'target' => $item->target()->value(),
+                'error' => $item->error()?->getMessage(),
+            ])->all(),
+        ]);
+
+        // The token is gone for good (uninstalled/unregistered) or was never valid: stop
+        // sending to it. A device row still gets reactivated the next time it logs in.
+        $deadTokens = collect($failures)
+            ->filter(fn (SendReport $item): bool => $item->error() instanceof NotFound || $item->error() instanceof InvalidArgument)
+            ->map(fn (SendReport $item): string => $item->target()->value())
+            ->all();
+
+        if ($deadTokens !== []) {
+            UserDevice::query()->whereIn('fcm_token', $deadTokens)->update(['active' => false]);
         }
     }
 }

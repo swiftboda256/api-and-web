@@ -17,8 +17,11 @@ use Clickbar\Magellan\Data\Geometries\LineString;
 use Clickbar\Magellan\Data\Geometries\Point;
 use Clickbar\Magellan\Data\Geometries\Polygon;
 use Kreait\Firebase\Contract\Messaging;
+use Kreait\Firebase\Exception\Messaging\NotFound;
 use Kreait\Firebase\Messaging\CloudMessage;
+use Kreait\Firebase\Messaging\MessageTarget;
 use Kreait\Firebase\Messaging\MulticastSendReport;
+use Kreait\Firebase\Messaging\SendReport;
 use Laravel\Sanctum\Sanctum;
 
 /**
@@ -283,9 +286,10 @@ test('the passenger hears about arrival, the start and the end of the trip', fun
     $completed = pushesTo($this, $this->customer, 'trip_completed');
 
     expect($arrived[0]->interruptionLevel)->toBe('time-sensitive')
+        ->and($arrived[0]->sound)->toBe('trip_alert.caf')
         ->and(pushesTo($this, $this->customer, 'trip_started'))->toHaveCount(1)
         ->and($completed)->toHaveCount(1)
-        ->and($completed[0]->sound)->toBe('destination_beep.caf')
+        ->and($completed[0]->sound)->toBe('default')
         ->and($completed[0]->id)->toBe($passenger->id);
 });
 
@@ -307,7 +311,8 @@ test('a riding passenger gets one push when the rider is near their drop-off', f
 
     $near = pushesTo($this, $this->customer, 'trip_near_destination');
     expect($near)->toHaveCount(1)
-        ->and($near[0]->sound)->toBe('destination_beep.caf')
+        ->and($near[0]->sound)->toBe('trip_alert.caf')
+        ->and($near[0]->interruptionLevel)->toBe('time-sensitive')
         ->and($near[0]->body)->toBe('About 400 m to your drop-off. Get ready to step off.')
         ->and($passenger->fresh()->near_destination_notified_at)->not->toBeNull();
 });
@@ -370,6 +375,62 @@ test('a push opted out of persistence is not written to the database', function 
     (new FcmGateway($messaging))->sendToUser($user, new PushMessage(type: 'ride_offer', id: 9, title: 'New job', body: 'Nearby', persist: false));
 
     expect($user->notifications()->count())->toBe(0);
+});
+
+test('a push with no badge of its own gets the recipient\'s unread notification count', function () {
+    $user = User::factory()->create();
+    UserDevice::query()->create(['user_id' => $user->id, 'device_type' => 'android', 'device_id' => 'd', 'fcm_token' => 'token', 'active' => true]);
+
+    $spy = new class(Mockery::mock(Messaging::class)) extends FcmGateway
+    {
+        public array $captured = [];
+
+        public function sendToTokens(array $tokens, PushMessage $message): void
+        {
+            $this->captured[] = $message;
+        }
+    };
+
+    // Each push is counted in the badge it carries itself -- the count reflects state
+    // right after that push's own row was persisted.
+    $spy->sendToUser($user, new PushMessage(type: 'trip_started', id: 1, title: 'T', body: 'B'));
+    $spy->sendToUser($user, new PushMessage(type: 'trip_completed', id: 2, title: 'T2', body: 'B2'));
+
+    expect($spy->captured[0]->badge)->toBe(1)
+        ->and($spy->captured[1]->badge)->toBe(2);
+});
+
+test('a ride offer keeps its own badge instead of the unread notification count', function () {
+    $user = User::factory()->create();
+    UserDevice::query()->create(['user_id' => $user->id, 'device_type' => 'android', 'device_id' => 'd', 'fcm_token' => 'token', 'active' => true]);
+
+    $spy = new class(Mockery::mock(Messaging::class)) extends FcmGateway
+    {
+        public array $captured = [];
+
+        public function sendToTokens(array $tokens, PushMessage $message): void
+        {
+            $this->captured[] = $message;
+        }
+    };
+
+    $spy->sendToUser($user, new PushMessage(type: 'ride_offer', id: 1, title: 'T', body: 'B', badge: 7, persist: false));
+
+    expect($spy->captured[0]->badge)->toBe(7);
+});
+
+test('a token the provider reports as unregistered is deactivated', function () {
+    $user = User::factory()->create();
+    $device = UserDevice::query()->create(['user_id' => $user->id, 'device_type' => 'android', 'device_id' => 'd', 'fcm_token' => 'dead-token', 'active' => true]);
+
+    $messaging = Mockery::mock(Messaging::class);
+    $messaging->shouldReceive('sendMulticast')->once()->andReturn(MulticastSendReport::withItems([
+        SendReport::failure(MessageTarget::with('token', 'dead-token'), NotFound::becauseTokenNotFound('dead-token')),
+    ]));
+
+    (new FcmGateway($messaging))->sendToUser($user, new PushMessage(type: 'trip_started', id: 1, title: 'T', body: 'B'));
+
+    expect($device->refresh()->active)->toBeFalse();
 });
 
 test('deliveries get no near-destination push', function () {

@@ -305,6 +305,7 @@ readonly class PostedRideService
             'Booking approved',
             'Your driver approved your seat booking.',
             ['trip_id' => $approved->trip_id, 'trip_passenger_id' => $approved->id, 'status' => 'matched'],
+            interruptionLevel: 'time-sensitive',
         );
 
         return $approved;
@@ -323,6 +324,7 @@ readonly class PostedRideService
                 'Booking declined',
                 'The driver declined your seat booking.',
                 ['trip_id' => $passenger->trip_id, 'trip_passenger_id' => $passenger->id, 'status' => 'cancelled'],
+                interruptionLevel: 'time-sensitive',
             );
         }
     }
@@ -550,6 +552,9 @@ readonly class PostedRideService
                 'seats_requested' => $passenger->seats_requested,
             ],
             expiresAt: $passenger->request_expires_at,
+            sound: 'request_alert.caf',
+            interruptionLevel: 'time-sensitive',
+            collapseKey: "posted_ride_booking_{$passenger->id}",
         );
     }
 
@@ -558,14 +563,28 @@ readonly class PostedRideService
      *
      * @param  array<non-empty-string, string|int|float|null>  $data
      */
-    private function notify(?User $user, string $type, int $id, string $title, string $body, array $data, ?CarbonInterface $expiresAt = null): void
-    {
+    private function notify(
+        ?User $user,
+        string $type,
+        int $id,
+        string $title,
+        string $body,
+        array $data,
+        ?CarbonInterface $expiresAt = null,
+        string $sound = 'default',
+        ?string $interruptionLevel = null,
+        ?string $collapseKey = null,
+    ): void {
         $this->pushGateway->sendToUser($user, new PushMessage(
             type: $type,
             id: $id,
             title: $title,
             body: $body,
             data: $data,
+            sound: $sound,
+            interruptionLevel: $interruptionLevel,
+            ttlSeconds: $expiresAt !== null ? max(1, (int) now()->diffInSeconds($expiresAt, true)) : null,
+            collapseKey: $collapseKey,
             expiresAt: $expiresAt,
         ));
     }

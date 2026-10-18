@@ -31,6 +31,7 @@ readonly class TripNotifier
             $booking instanceof DeliveryDetails ? 'A rider is on the way' : 'Your rider is on the way',
             $name ? "{$name} has accepted your trip and is heading to the pickup point." : 'Your rider has accepted your trip and is heading to the pickup point.',
             ['status' => 'matched'],
+            interruptionLevel: 'time-sensitive',
         );
     }
 
@@ -38,6 +39,7 @@ readonly class TripNotifier
     {
         $this->toCustomer($booking, 'trip_rider_arrived', 'Your rider has arrived', 'Your rider is waiting at the pickup point.',
             ['status' => 'arrived_pickup'],
+            sound: 'trip_alert.caf',
             interruptionLevel: 'time-sensitive',
         );
     }
@@ -46,7 +48,7 @@ readonly class TripNotifier
     {
         $isDelivery = $booking instanceof DeliveryDetails;
 
-        $this->toCustomer($booking, 'trip_started',
+        $this->toCustomer($booking, $isDelivery ? 'delivery_picked_up' : 'trip_started',
             $isDelivery ? 'Your delivery is on the way' : 'Your trip has started',
             $isDelivery ? 'Your package has been picked up and is on its way.' : 'Enjoy your ride.',
             ['status' => 'picked_up'],
@@ -60,21 +62,21 @@ readonly class TripNotifier
     {
         $this->toCustomer($booking, 'trip_near_destination', 'Almost there',
             "About {$radiusMeters} m to your drop-off. Get ready to step off.",
-            sound: 'destination_beep.caf',
+            sound: 'trip_alert.caf',
+            interruptionLevel: 'time-sensitive',
         );
     }
 
     public function completed(TripPassenger|DeliveryDetails $booking): void
     {
         if ($booking instanceof DeliveryDetails) {
-            $this->toCustomer($booking, 'delivery_completed', 'Delivery completed', 'Your package has been delivered.', ['status' => 'dropped_off']);
+            $this->toCustomer($booking, 'delivery_delivered', 'Delivery completed', 'Your package has been delivered.', ['status' => 'dropped_off']);
 
             return;
         }
 
         $this->toCustomer($booking, 'trip_completed', 'You have arrived', 'You have reached your destination. Thank you for riding with us.',
             ['status' => 'dropped_off'],
-            sound: 'destination_beep.caf',
         );
     }
 
@@ -85,6 +87,7 @@ readonly class TripNotifier
     {
         $this->toCustomer($booking, 'trip_rider_cancelled', 'Your rider cancelled', 'Your rider cancelled the trip. We are finding you another rider.',
             ['status' => 'searching'],
+            interruptionLevel: 'time-sensitive',
         );
     }
 
@@ -95,6 +98,7 @@ readonly class TripNotifier
     {
         $this->toCustomer($booking, 'trip_cancelled', 'Your trip was cancelled', 'Your rider cancelled the trip. You have not been charged.',
             ['status' => 'cancelled'],
+            interruptionLevel: 'time-sensitive',
         );
     }
 
