@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Controller;
+use App\Http\Middleware\EnsureUserHasRole;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Application;
@@ -20,7 +21,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        $middleware->alias([
+            'role' => EnsureUserHasRole::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $wantsJson = fn (Request $request): bool => $request->is('api/*') || $request->expectsJson();

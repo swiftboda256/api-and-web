@@ -61,7 +61,7 @@ beforeEach(function () {
     PricingRule::factory()->create(['zone_id' => $this->zone->id, 'vehicle_type_id' => $this->vehicleType->id]);
 
     $this->ongoing = ongoingRideShareTrip($this->zone, $this->vehicleType, driverAt: Point::makeGeodetic(0.3476, 32.5825));
-    $this->customer = User::factory()->create();
+    $this->customer = User::factory()->customer()->create();
 });
 
 /**
@@ -69,7 +69,7 @@ beforeEach(function () {
  */
 function ongoingRideShareTrip(Zone $zone, VehicleType $vehicleType, Point $driverAt): Trip
 {
-    $driver = User::factory()->create();
+    $driver = User::factory()->rider()->create();
     RiderProfile::factory()->create([
         'user_id' => $driver->id,
         'availability_status' => 'on_trip',
@@ -324,7 +324,7 @@ test('the customer can cancel while pending approval, releasing the seats but ke
 
 test('only a pending passenger on the driver\'s own trip can be accepted or declined', function () {
     $passenger = orderRideShare($this);
-    $otherDriver = User::factory()->create();
+    $otherDriver = User::factory()->rider()->create();
 
     Sanctum::actingAs($otherDriver);
     $this->patchJson("/api/v1/rider-app/rides/{$this->ongoing->id}/passengers/{$passenger->id}/accept")->assertNotFound();

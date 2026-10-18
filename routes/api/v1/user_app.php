@@ -34,7 +34,7 @@ Route::prefix('auth')->name('auth.')->group(function () {
 
 Route::get('configurations', [ConfigurationController::class, 'index'])->name('configurations');
 
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'role:customer'])->group(function () {
     Route::get('profile', [ProfileController::class, 'index'])->name('profile');
     Route::patch('profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('profile', [ProfileController::class, 'destroy'])->name('profile.destroy');

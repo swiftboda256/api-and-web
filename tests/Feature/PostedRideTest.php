@@ -38,11 +38,11 @@ beforeEach(function () {
     $this->vehicleType = VehicleType::factory()->create(['capacity' => 4]);
     PricingRule::factory()->create(['zone_id' => $this->zone->id, 'vehicle_type_id' => $this->vehicleType->id]);
 
-    $this->driver = User::factory()->create();
+    $this->driver = User::factory()->rider()->customer()->create();
     $riderProfile = RiderProfile::factory()->create(['user_id' => $this->driver->id, 'availability_status' => 'online']);
     Vehicle::factory()->create(['rider_profile_id' => $riderProfile->id, 'vehicle_type_id' => $this->vehicleType->id]);
 
-    $this->customer = User::factory()->create();
+    $this->customer = User::factory()->customer()->create();
 });
 
 function postRide($test, array $overrides = []): Trip
@@ -162,7 +162,7 @@ test('booking holds the seats and waits for the driver to approve', function () 
         ->assertUnprocessable();
 
     // Nor can anyone book more seats than are left.
-    Sanctum::actingAs(User::factory()->create());
+    Sanctum::actingAs(User::factory()->customer()->create());
     $this->postJson("/api/v1/user-app/trips/posted/{$trip->id}/book", ['seats_requested' => 2, 'payment_method' => 'cash'])
         ->assertUnprocessable()
         ->assertJsonValidationErrors('seats_requested');
@@ -171,7 +171,7 @@ test('booking holds the seats and waits for the driver to approve', function () 
 test('approving a booking matches the passenger and puts their stops on the route', function () {
     $trip = postRide($this);
     $first = bookSeats($this, $trip, $this->customer);
-    $second = bookSeats($this, $trip, User::factory()->create());
+    $second = bookSeats($this, $trip, User::factory()->customer()->create());
 
     approveBooking($this, $first);
     approveBooking($this, $second);
@@ -224,7 +224,7 @@ test('a customer cancelling their booking frees the seats and the ride stays ope
 
 test('the ride can only start with an approved booking, and unanswered requests are declined then', function () {
     $trip = postRide($this);
-    $pending = bookSeats($this, $trip, User::factory()->create());
+    $pending = bookSeats($this, $trip, User::factory()->customer()->create());
 
     Sanctum::actingAs($this->driver);
     $this->patchJson("/api/v1/rider-app/rides/{$trip->id}/start")->assertUnprocessable();
@@ -240,14 +240,14 @@ test('the ride can only start with an approved booking, and unanswered requests 
         ->and($this->driver->riderProfile->fresh()->availability_status)->toBe('on_trip');
 
     // Too late to book once it's under way.
-    Sanctum::actingAs(User::factory()->create());
+    Sanctum::actingAs(User::factory()->customer()->create());
     $this->postJson("/api/v1/user-app/trips/posted/{$trip->id}/book", ['payment_method' => 'cash'])->assertNotFound();
 });
 
 test('each passenger settles at the fixed seat fare and the ride completes after the last dropoff', function () {
     $trip = postRide($this);
     $first = bookSeats($this, $trip, $this->customer, seats: 2);
-    $second = bookSeats($this, $trip, User::factory()->create());
+    $second = bookSeats($this, $trip, User::factory()->customer()->create());
     approveBooking($this, $first);
     approveBooking($this, $second);
 
@@ -275,7 +275,7 @@ test('the driver cancelling the ride cancels every booking and does not re-dispa
     $trip = postRide($this);
     $approved = bookSeats($this, $trip, $this->customer);
     approveBooking($this, $approved);
-    $pending = bookSeats($this, $trip, User::factory()->create());
+    $pending = bookSeats($this, $trip, User::factory()->customer()->create());
 
     Sanctum::actingAs($this->driver);
     $this->patchJson("/api/v1/rider-app/rides/{$trip->id}/cancel")->assertOk();
@@ -356,7 +356,7 @@ test('the driver removes an approved passenger before departure, freeing their s
     assertPushed($this, 'posted_ride_passenger_removed');
 
     // The ride is bookable again.
-    Sanctum::actingAs(User::factory()->create());
+    Sanctum::actingAs(User::factory()->customer()->create());
     $this->getJson('/api/v1/user-app/trips/posted?seats=3')->assertOk()->assertJsonPath('data.rides.0.id', $trip->id);
 });
 
@@ -386,7 +386,7 @@ test('only approved passengers not yet picked up can be removed, with a rider re
 test('removing a no-show after departure completes the ride once everyone else is dropped off', function () {
     $trip = postRide($this);
     $rider = bookSeats($this, $trip, $this->customer);
-    $noShow = bookSeats($this, $trip, User::factory()->create());
+    $noShow = bookSeats($this, $trip, User::factory()->customer()->create());
     approveBooking($this, $rider);
     approveBooking($this, $noShow);
 

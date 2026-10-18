@@ -14,7 +14,7 @@ use Laravel\Sanctum\Sanctum;
  */
 beforeEach(function () {
     $this->category = SupportCategory::query()->create(['name' => 'Trip issue', 'code' => 'trip_issue', 'is_active' => true]);
-    $this->trip = Trip::factory()->create(['type' => 'ride', 'customer_id' => null, 'rider_id' => User::factory()->create()->id]);
+    $this->trip = Trip::factory()->create(['type' => 'ride', 'customer_id' => null, 'rider_id' => User::factory()->rider()->create()->id]);
 });
 
 function ticketFor($test, User $user, string $app, int $tripId)
@@ -30,7 +30,7 @@ function ticketFor($test, User $user, string $app, int $tripId)
 }
 
 test('a passenger can raise a ticket about a trip they have a booking on', function () {
-    $passenger = User::factory()->create();
+    $passenger = User::factory()->customer()->create();
     TripPassenger::query()->create(['trip_id' => $this->trip->id, 'customer_id' => $passenger->id, 'seats_requested' => 1, 'status' => 'dropped_off', 'requested_at' => now()]);
 
     ticketFor($this, $passenger, 'user-app', $this->trip->id)->assertCreated();
@@ -39,7 +39,7 @@ test('a passenger can raise a ticket about a trip they have a booking on', funct
 });
 
 test('a sender can raise a ticket about their delivery trip', function () {
-    $sender = User::factory()->create();
+    $sender = User::factory()->customer()->create();
     $trip = Trip::factory()->delivery()->create(['customer_id' => null]);
     DeliveryDetails::factory()->for($trip)->create(['sender_id' => $sender->id]);
 
@@ -52,7 +52,7 @@ test('the rider can raise a ticket about a trip they drove', function () {
 
 test('nobody else can attach the trip to a ticket', function () {
     // Someone with a booking on a different trip.
-    $other = User::factory()->create();
+    $other = User::factory()->customer()->create();
     $otherTrip = Trip::factory()->create(['type' => 'ride', 'customer_id' => null]);
     TripPassenger::query()->create(['trip_id' => $otherTrip->id, 'customer_id' => $other->id, 'seats_requested' => 1, 'status' => 'dropped_off', 'requested_at' => now()]);
 

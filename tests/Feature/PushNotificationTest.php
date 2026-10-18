@@ -55,12 +55,12 @@ beforeEach(function () {
     $this->vehicleType = VehicleType::factory()->create(['capacity' => 1]);
     PricingRule::factory()->create(['zone_id' => $this->zone->id, 'vehicle_type_id' => $this->vehicleType->id]);
 
-    $this->customer = User::factory()->create();
+    $this->customer = User::factory()->customer()->create();
 });
 
 function onlineRider($test, float $latitude = 0.3410, float $longitude = 32.5825): User
 {
-    $rider = User::factory()->create();
+    $rider = User::factory()->rider()->create();
     $profile = RiderProfile::factory()->create([
         'user_id' => $rider->id,
         'availability_status' => 'online',

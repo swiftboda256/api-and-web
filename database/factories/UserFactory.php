@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Spatie\Permission\Models\Role;
 
 /**
  * @extends Factory<User>
@@ -43,5 +44,25 @@ class UserFactory extends Factory
         return $this->state(fn (array $attributes) => [
             'email_verified_at' => null,
         ]);
+    }
+
+    /**
+     * Give the user the "customer" role, as the user-app's role middleware requires.
+     */
+    public function customer(): static
+    {
+        return $this->afterCreating(function (User $user): void {
+            $user->assignRole(Role::findOrCreate('customer', 'web'));
+        });
+    }
+
+    /**
+     * Give the user the "rider" role, as the rider-app's role middleware requires.
+     */
+    public function rider(): static
+    {
+        return $this->afterCreating(function (User $user): void {
+            $user->assignRole(Role::findOrCreate('rider', 'web'));
+        });
     }
 }

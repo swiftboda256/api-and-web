@@ -34,7 +34,7 @@ beforeEach(function () {
     $this->vehicleType = VehicleType::factory()->create(['capacity' => 1, 'max_cargo_weight_kg' => 20]);
     PricingRule::factory()->create(['zone_id' => $zone->id, 'vehicle_type_id' => $this->vehicleType->id]);
 
-    $this->customer = User::factory()->create();
+    $this->customer = User::factory()->customer()->create();
     Sanctum::actingAs($this->customer);
 });
 
@@ -103,7 +103,7 @@ test('a customer cannot cancel someone else\'s booking', function () {
     $ride = book(['type' => 'ride']);
     $delivery = book(['type' => 'delivery', 'recipient_name' => 'Jane Namukasa', 'recipient_phone' => '+256700123456']);
 
-    Sanctum::actingAs(User::factory()->create());
+    Sanctum::actingAs(User::factory()->customer()->create());
     $this->patchJson("/api/v1/user-app/trips/cancel-ride/{$ride['id']}")->assertNotFound();
     $this->patchJson("/api/v1/user-app/trips/cancel-delivery/{$delivery['id']}")->assertNotFound();
 
@@ -172,6 +172,6 @@ test('the type parameter only looks in the matching kind of booking', function (
     $this->getJson("/api/v1/user-app/trips/{$delivery['id']}?type=ride_share")->assertNotFound();
     $this->getJson("/api/v1/user-app/trips/{$ride['id']}?type=bus")->assertUnprocessable()->assertJsonValidationErrors('type');
 
-    Sanctum::actingAs(User::factory()->create());
+    Sanctum::actingAs(User::factory()->customer()->create());
     $this->getJson("/api/v1/user-app/trips/{$ride['id']}?type=ride")->assertNotFound();
 });

@@ -43,12 +43,12 @@ beforeEach(function () {
     ])])]);
     $this->vehicleType = VehicleType::factory()->create(['capacity' => 1]);
     PricingRule::factory()->create(['zone_id' => $this->zone->id, 'vehicle_type_id' => $this->vehicleType->id]);
-    $this->customer = User::factory()->create();
+    $this->customer = User::factory()->customer()->create();
 });
 
 function reviewRider($test): User
 {
-    $rider = User::factory()->create();
+    $rider = User::factory()->rider()->create();
     $profile = RiderProfile::factory()->create(['user_id' => $rider->id, 'availability_status' => 'online', 'current_location' => Point::makeGeodetic(0.341, 32.5825)]);
     Vehicle::factory()->create(['rider_profile_id' => $profile->id, 'vehicle_type_id' => $test->vehicleType->id]);
 

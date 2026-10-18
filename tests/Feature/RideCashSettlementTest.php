@@ -33,7 +33,7 @@ beforeEach(function () {
     $this->vehicleType = VehicleType::factory()->create(['capacity' => 4]);
     PricingRule::factory()->create(['zone_id' => $this->zone->id, 'vehicle_type_id' => $this->vehicleType->id]);
 
-    $this->driver = User::factory()->create();
+    $this->driver = User::factory()->rider()->create();
     RiderProfile::factory()->create(['user_id' => $this->driver->id, 'availability_status' => 'on_trip']);
     $this->wallet = Wallet::query()->create(['user_id' => $this->driver->id, 'balance' => 10000, 'currency_code' => 'UGX', 'status' => 'active']);
 
