@@ -19,6 +19,11 @@ use Kreait\Firebase\Messaging\CloudMessage;
  *
  * $id is the record the receiving app opens: the trip id on the rider app, the booking id
  * (trip_passenger_id / delivery_details_id) on the customer app.
+ *
+ * $persist controls whether the event also lands in the recipient's in-app notification
+ * list (see PushEventNotification). It's ignored -- never persisted -- when $silent, since
+ * there's no title/body to show. Set it false for high-frequency or purely real-time pushes
+ * that shouldn't pile up as history (e.g. a ride offer re-sent every dispatch round).
  */
 final readonly class PushMessage
 {
@@ -39,6 +44,7 @@ final readonly class PushMessage
         public ?CarbonInterface $expiresAt = null,
         public ?int $badge = null,
         public bool $contentAvailable = false,
+        public bool $persist = true,
     ) {}
 
     /**
