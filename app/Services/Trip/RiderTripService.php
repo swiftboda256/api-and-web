@@ -813,6 +813,9 @@ readonly class RiderTripService
 
         $trip->update(['status' => 'completed', 'completed_at' => now()]);
         $riderProfile->update(['availability_status' => 'online']);
+
+        // Callers wrap this in a transaction -- tell the rider once it's saved.
+        DB::afterCommit(fn () => $this->notifier->rideCompleted($trip));
     }
 
     public function end(User $user, int $tripId, ?UploadedFile $proofOfDeliveryPhoto = null): Trip

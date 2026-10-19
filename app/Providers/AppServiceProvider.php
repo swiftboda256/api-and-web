@@ -4,7 +4,9 @@ namespace App\Providers;
 
 use App\Models\Configuration;
 use App\Models\Rating;
+use App\Models\Transaction;
 use App\Observers\RatingObserver;
+use App\Observers\TransactionObserver;
 use App\Services\Payment\Contracts\PaymentGateway;
 use App\Services\Payment\YoPaymentService;
 use App\Services\Routing\Contracts\RoutingGateway;
@@ -39,6 +41,7 @@ class AppServiceProvider extends ServiceProvider
         $this->configureBlueprintMacros();
 
         Rating::observe(RatingObserver::class);
+        Transaction::observe(TransactionObserver::class);
 
         if (! $this->app->runningInConsole()) {
             $this->configureSanctumTokenExpiration();

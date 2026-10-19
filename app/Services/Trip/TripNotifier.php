@@ -121,15 +121,19 @@ readonly class TripNotifier
     }
 
     /**
-     * To the rider: the customer cancelled their booking on the rider's trip.
+     * To the rider: the customer cancelled their booking on the rider's trip. $wasAccepted
+     * is true once a rider had already committed to the booking (matched/arrived_pickup) --
+     * that's a "ride_cancelled" (the job itself fell through), as opposed to a still-pending
+     * request (ride_share_join_request/posted_ride_booking_request) whose ring just needs to
+     * stop, which stays "booking_cancelled".
      */
-    public function bookingCancelled(TripPassenger|DeliveryDetails $booking): void
+    public function bookingCancelled(TripPassenger|DeliveryDetails $booking, bool $wasAccepted = false): void
     {
         $trip = $booking->trip;
         $isDelivery = $booking instanceof DeliveryDetails;
 
         $this->push->sendToUser($trip->rider, new PushMessage(
-            type: 'booking_cancelled',
+            type: $wasAccepted ? 'ride_cancelled' : 'booking_cancelled',
             id: $trip->id,
             title: $isDelivery ? 'Delivery cancelled' : 'Ride cancelled',
             body: $isDelivery ? 'The sender cancelled their delivery.' : 'The passenger cancelled their ride.',
@@ -139,6 +143,21 @@ readonly class TripNotifier
                 'status' => 'cancelled',
                 'trip_status' => (string) $trip->fresh()?->status,
             ],
+            interruptionLevel: $wasAccepted ? 'time-sensitive' : null,
+        ));
+    }
+
+    /**
+     * To the rider: their vehicle trip just closed (every booking on it dropped off).
+     */
+    public function rideCompleted(Trip $trip): void
+    {
+        $this->push->sendToUser($trip->rider, new PushMessage(
+            type: 'ride_completed',
+            id: $trip->id,
+            title: 'Trip completed',
+            body: 'Your trip has ended.',
+            data: ['trip_id' => $trip->id],
         ));
     }
 

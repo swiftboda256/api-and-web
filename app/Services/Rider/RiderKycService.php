@@ -5,11 +5,18 @@ namespace App\Services\Rider;
 use App\Models\Document;
 use App\Models\RiderProfile;
 use App\Models\User;
+use App\Services\Push\FcmGateway;
+use App\Services\Push\PushMessage;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 readonly class RiderKycService
 {
     private const array REQUIRED_DOCUMENT_TYPES = ['national_id', 'driving_license'];
+
+    public function __construct(
+        private FcmGateway $push,
+    ) {}
 
     public function approveDocument(Document $document, RiderProfile $riderProfile, User $reviewer): Document
     {
@@ -37,6 +44,14 @@ readonly class RiderKycService
                 'reviewed_at' => now(),
             ]);
 
+            $this->push->sendToUser($riderProfile->user, new PushMessage(
+                type: 'document_rejected',
+                id: $document->id,
+                title: 'Document rejected',
+                body: Str::headline($document->document_type)." was rejected: {$reason}",
+                data: ['document_id' => $document->id, 'document_type' => $document->document_type],
+            ));
+
             $this->recomputeKycStatus($riderProfile, $reviewer);
 
             return $document->refresh();
@@ -63,6 +78,8 @@ readonly class RiderKycService
      */
     private function recomputeKycStatus(RiderProfile $riderProfile, User $reviewer): void
     {
+        $previousStatus = $riderProfile->kyc_status;
+
         $documents = $riderProfile->documents()
             ->whereIn('document_type', self::REQUIRED_DOCUMENT_TYPES)
             ->get();
@@ -74,6 +91,8 @@ readonly class RiderKycService
                 'kyc_status' => 'rejected',
                 'kyc_rejection_reason' => $rejected->rejection_reason,
             ]);
+
+            $this->notifyKycStatusChanged($riderProfile, $previousStatus, 'rejected', $rejected->rejection_reason);
 
             return;
         }
@@ -90,6 +109,8 @@ readonly class RiderKycService
                 'approved_by' => $reviewer->id,
             ]);
 
+            $this->notifyKycStatusChanged($riderProfile, $previousStatus, 'approved');
+
             return;
         }
 
@@ -97,5 +118,26 @@ readonly class RiderKycService
             'kyc_status' => 'pending',
             'kyc_rejection_reason' => null,
         ]);
+    }
+
+    /**
+     * Only pushes on an actual transition into approved/rejected, so re-reviewing an
+     * already-decided rider (e.g. deleting one more document) doesn't re-fire it.
+     */
+    private function notifyKycStatusChanged(RiderProfile $riderProfile, ?string $previousStatus, string $newStatus, ?string $reason = null): void
+    {
+        if ($previousStatus === $newStatus) {
+            return;
+        }
+
+        $this->push->sendToUser($riderProfile->user, new PushMessage(
+            type: $newStatus === 'approved' ? 'kyc_approved' : 'kyc_rejected',
+            id: $riderProfile->id,
+            title: $newStatus === 'approved' ? 'KYC approved' : 'KYC rejected',
+            body: $newStatus === 'approved'
+                ? 'Your documents have been verified. You can now accept rides.'
+                : ($reason ?? 'Your KYC review was rejected.'),
+            data: ['kyc_status' => $newStatus],
+        ));
     }
 }

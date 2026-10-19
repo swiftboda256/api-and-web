@@ -320,6 +320,13 @@ test('the customer can cancel while pending approval, releasing the seats but ke
         ->and($this->ongoing->fresh()->stops)->toHaveCount(2)
         ->and($this->ongoing->fresh()->available_seats)->toBe(3)
         ->and($this->ongoing->fresh()->passenger_count)->toBe(1);
+
+    // Still pending_approval when cancelled -- the driver was only being asked to take on
+    // one more passenger, not abandoning a job they'd already committed to, so this stays a
+    // request-ring stop (booking_cancelled), not a ride_cancelled.
+    $this->push->shouldHaveReceived('sendToUser')
+        ->withArgs(fn ($rider, PushMessage $message) => $message->type === 'booking_cancelled')
+        ->once();
 });
 
 test('only a pending passenger on the driver\'s own trip can be accepted or declined', function () {

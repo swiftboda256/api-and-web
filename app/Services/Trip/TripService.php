@@ -812,11 +812,15 @@ readonly class TripService
             ]);
         }
 
+        // A rider had already committed to this booking: the job itself falls through,
+        // rather than just a pending request's ring stopping.
+        $wasAccepted = in_array($passenger->status, ['matched', 'arrived_pickup'], true);
+
         // A posted ride carries on whoever cancels -- it's the driver's own trip.
         if ($passenger->trip->type === 'posted_ride') {
             $this->postedRides->cancelBooking($passenger, $user, $cancellationReasonId);
             $this->closeTripIfNobodyLeft($passenger->trip);
-            $this->notifyRiderOfCustomerCancellation($passenger);
+            $this->notifyRiderOfCustomerCancellation($passenger, $wasAccepted);
 
             return $passenger->refresh()->load($this->passengerEagerLoads());
         }
@@ -834,7 +838,7 @@ readonly class TripService
                 'cancellation_reason_id' => $cancellationReasonId,
             ]);
 
-            $this->notifyRiderOfCustomerCancellation($passenger);
+            $this->notifyRiderOfCustomerCancellation($passenger, $wasAccepted);
 
             return $passenger->refresh()->load($this->passengerEagerLoads());
         }
@@ -869,7 +873,7 @@ readonly class TripService
         $this->releaseRiderIfTripCancelled($passenger->trip);
         $this->closeOffersIfTripCancelled($passenger->trip);
         $this->closeTripIfNobodyLeft($passenger->trip);
-        $this->notifyRiderOfCustomerCancellation($passenger);
+        $this->notifyRiderOfCustomerCancellation($passenger, $wasAccepted);
 
         return $passenger->refresh()->load($this->passengerEagerLoads());
     }
@@ -897,6 +901,10 @@ readonly class TripService
                 'status' => 'You can\'t cancel a delivery that has already been picked up.',
             ]);
         }
+
+        // A rider had already committed to this booking: the job itself falls through,
+        // rather than just a pending request's ring stopping.
+        $wasAccepted = in_array($delivery->status, ['matched', 'arrived_pickup'], true);
 
         DB::transaction(function () use ($delivery, $user, $cancellationReasonId): void {
             $trip = $delivery->trip;
@@ -928,7 +936,7 @@ readonly class TripService
         $this->releaseRiderIfTripCancelled($delivery->trip);
         $this->closeOffersIfTripCancelled($delivery->trip);
         $this->closeTripIfNobodyLeft($delivery->trip);
-        $this->notifyRiderOfCustomerCancellation($delivery);
+        $this->notifyRiderOfCustomerCancellation($delivery, $wasAccepted);
 
         return $delivery->refresh()->load($this->deliveryEagerLoads());
     }
@@ -1094,9 +1102,9 @@ readonly class TripService
         }
     }
 
-    private function notifyRiderOfCustomerCancellation(TripPassenger|DeliveryDetails $cancelled): void
+    private function notifyRiderOfCustomerCancellation(TripPassenger|DeliveryDetails $cancelled, bool $wasAccepted = false): void
     {
-        $this->notifier->bookingCancelled($cancelled);
+        $this->notifier->bookingCancelled($cancelled, $wasAccepted);
     }
 
     private function generateTripNumber(): string

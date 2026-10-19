@@ -1,7 +1,9 @@
 <?php
 
+use App\Models\Document;
 use App\Models\PricingRule;
 use App\Models\RiderProfile;
+use App\Models\Transaction;
 use App\Models\Trip;
 use App\Models\TripOffer;
 use App\Models\TripPassenger;
@@ -9,9 +11,11 @@ use App\Models\User;
 use App\Models\UserDevice;
 use App\Models\Vehicle;
 use App\Models\VehicleType;
+use App\Models\Wallet;
 use App\Models\Zone;
 use App\Services\Push\FcmGateway;
 use App\Services\Push\PushMessage;
+use App\Services\Rider\RiderKycService;
 use App\Services\Trip\NearDestinationService;
 use Clickbar\Magellan\Data\Geometries\LineString;
 use Clickbar\Magellan\Data\Geometries\Point;
@@ -291,6 +295,27 @@ test('the passenger hears about arrival, the start and the end of the trip', fun
         ->and($completed)->toHaveCount(1)
         ->and($completed[0]->sound)->toBe('default')
         ->and($completed[0]->id)->toBe($passenger->id);
+
+    $rideCompleted = pushesTo($this, $rider, 'ride_completed');
+    expect($rideCompleted)->toHaveCount(1)
+        ->and($rideCompleted[0]->id)->toBe($passenger->trip_id);
+});
+
+test('the rider is told the job fell through when the passenger cancels an already-accepted ride', function () {
+    $rider = onlineRider($this);
+    $passenger = bookRide($this);
+
+    Sanctum::actingAs($rider);
+    $this->patchJson("/api/v1/rider-app/rides/{$passenger->trip_id}/accept")->assertOk();
+
+    Sanctum::actingAs($this->customer);
+    $this->patchJson("/api/v1/user-app/trips/cancel-ride/{$passenger->id}")->assertOk();
+
+    expect(pushesTo($this, $rider, 'booking_cancelled'))->toBe([]);
+
+    $cancelled = pushesTo($this, $rider, 'ride_cancelled');
+    expect($cancelled)->toHaveCount(1)
+        ->and($cancelled[0]->interruptionLevel)->toBe('time-sensitive');
 });
 
 test('a riding passenger gets one push when the rider is near their drop-off', function () {
@@ -443,6 +468,135 @@ test('deliveries get no near-destination push', function () {
     ]);
 
     app(NearDestinationService::class)->check($trip, Point::makeGeodetic(0.32, 32.5825));
+
+    expect($this->push->sent)->toBe([]);
+});
+
+test('a rejected document notifies the rider, and a rejection that fails KYC does too', function () {
+    $rider = User::factory()->create();
+    $riderProfile = RiderProfile::factory()->create(['user_id' => $rider->id, 'kyc_status' => 'pending', 'approved_at' => null]);
+    $admin = User::factory()->create();
+
+    $document = Document::query()->create([
+        'documentable_type' => RiderProfile::class,
+        'documentable_id' => $riderProfile->id,
+        'document_type' => 'national_id',
+        'file_path' => 'documents/id.pdf',
+        'status' => 'pending',
+    ]);
+
+    app(RiderKycService::class)->rejectDocument($document, $riderProfile, $admin, 'Blurry photo');
+
+    expect(pushesTo($this, $rider, 'document_rejected'))->toHaveCount(1)
+        ->and(pushesTo($this, $rider, 'kyc_rejected'))->toHaveCount(1)
+        ->and(pushesTo($this, $rider, 'kyc_approved'))->toBe([]);
+});
+
+test('approving every required document notifies the rider once, not on a later no-op recompute', function () {
+    $rider = User::factory()->create();
+    $riderProfile = RiderProfile::factory()->create(['user_id' => $rider->id, 'kyc_status' => 'pending', 'approved_at' => null]);
+    $admin = User::factory()->create();
+
+    $nationalId = Document::query()->create([
+        'documentable_type' => RiderProfile::class,
+        'documentable_id' => $riderProfile->id,
+        'document_type' => 'national_id',
+        'file_path' => 'documents/id.pdf',
+        'status' => 'pending',
+    ]);
+    $license = Document::query()->create([
+        'documentable_type' => RiderProfile::class,
+        'documentable_id' => $riderProfile->id,
+        'document_type' => 'driving_license',
+        'file_path' => 'documents/license.pdf',
+        'status' => 'pending',
+    ]);
+
+    $kyc = app(RiderKycService::class);
+    $kyc->approveDocument($nationalId, $riderProfile, $admin);
+
+    // Only one of two required documents approved so far: no kyc_approved yet.
+    expect(pushesTo($this, $rider, 'kyc_approved'))->toBe([]);
+
+    $kyc->approveDocument($license, $riderProfile, $admin);
+
+    expect(pushesTo($this, $rider, 'kyc_approved'))->toHaveCount(1);
+
+    // Re-approving an already-approved document re-runs the recompute, but the overall
+    // status is still 'approved' throughout -- no second push.
+    $kyc->approveDocument($nationalId->fresh(), $riderProfile->fresh(), $admin);
+
+    expect(pushesTo($this, $rider, 'kyc_approved'))->toHaveCount(1);
+});
+
+test('a completed wallet transaction notifies the account it belongs to', function () {
+    $user = User::factory()->create();
+    $wallet = Wallet::query()->create(['user_id' => $user->id, 'balance' => 0, 'currency_code' => 'UGX']);
+
+    Transaction::query()->create([
+        'user_id' => $user->id,
+        'wallet_id' => $wallet->id,
+        'method' => 'wallet',
+        'direction' => 'credit',
+        'transaction_type' => 'trip_payout',
+        'amount' => 5000,
+        'currency_code' => 'UGX',
+        'status' => 'completed',
+    ]);
+
+    Transaction::query()->create([
+        'user_id' => $user->id,
+        'wallet_id' => $wallet->id,
+        'method' => 'wallet',
+        'direction' => 'debit',
+        'transaction_type' => 'commission',
+        'amount' => 500,
+        'currency_code' => 'UGX',
+        'status' => 'completed',
+    ]);
+
+    expect(pushesTo($this, $user, 'wallet_credited'))->toHaveCount(1)
+        ->and(pushesTo($this, $user, 'wallet_debited'))->toHaveCount(1);
+});
+
+test('a pending transaction only notifies once it actually completes', function () {
+    $user = User::factory()->create();
+    $wallet = Wallet::query()->create(['user_id' => $user->id, 'balance' => 0, 'currency_code' => 'UGX']);
+
+    $transaction = Transaction::query()->create([
+        'user_id' => $user->id,
+        'wallet_id' => $wallet->id,
+        'method' => 'mobile_money',
+        'direction' => 'credit',
+        'transaction_type' => 'trip_payout',
+        'amount' => 5000,
+        'currency_code' => 'UGX',
+        'status' => 'pending',
+    ]);
+
+    expect(pushesTo($this, $user, 'wallet_credited'))->toBe([]);
+
+    $transaction->update(['status' => 'completed']);
+
+    expect(pushesTo($this, $user, 'wallet_credited'))->toHaveCount(1);
+});
+
+test('top-ups and withdrawals are not pushed yet', function () {
+    $user = User::factory()->create();
+    $wallet = Wallet::query()->create(['user_id' => $user->id, 'balance' => 0, 'currency_code' => 'UGX']);
+
+    foreach (['topup', 'withdrawal', 'withdrawal_charge'] as $type) {
+        Transaction::query()->create([
+            'user_id' => $user->id,
+            'wallet_id' => $wallet->id,
+            'method' => 'wallet',
+            'direction' => 'credit',
+            'transaction_type' => $type,
+            'amount' => 1000,
+            'currency_code' => 'UGX',
+            'status' => 'completed',
+        ]);
+    }
 
     expect($this->push->sent)->toBe([]);
 });
