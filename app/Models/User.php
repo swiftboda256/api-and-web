@@ -6,6 +6,8 @@ namespace App\Models;
 use App\Models\Concerns\HasAuditColumns;
 use Carbon\CarbonImmutable;
 use Database\Factories\UserFactory;
+use Filament\Models\Contracts\FilamentUser;
+use Filament\Panel;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -42,7 +44,7 @@ use Spatie\Permission\Traits\HasRoles;
  * @property CarbonImmutable|null $created_at
  * @property CarbonImmutable|null $updated_at
  */
-class User extends Authenticatable
+class User extends Authenticatable implements FilamentUser
 {
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasAuditColumns, HasFactory, HasRoles, Notifiable;
@@ -249,5 +251,10 @@ class User extends Authenticatable
         return Str::length($initials) > 1
             ? Str::substr($initials, 0, 1).Str::substr($initials, -1)
             : $initials;
+    }
+
+    public function canAccessPanel(Panel $panel): bool
+    {
+        return $this->hasAnyRole(['super_admin', 'admin']);
     }
 }
