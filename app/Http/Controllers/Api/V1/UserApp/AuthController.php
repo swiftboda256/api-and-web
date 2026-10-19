@@ -38,6 +38,7 @@ class AuthController extends Controller
         $device_id = $request->string('device_id');
         $device_type = $request->string('device_type');
         $fcm_token = $request->string('fcm_token');
+        $voip_token = $request->input('voip_token');
         $app_version = $request->input('app_version');
 
         $userAccountService->ensureNotSuspended($phone);
@@ -68,6 +69,7 @@ class AuthController extends Controller
             ], [
                 'device_type' => $device_type,
                 'fcm_token' => $fcm_token,
+                'voip_token' => $voip_token,
                 'app_version' => $app_version,
                 'ip_address' => $request->ip(),
                 'last_seen_at' => now(),

@@ -22,6 +22,7 @@ class VerifyOtpRequest extends FormRequest
             'device_type' => ['required', 'in:android,ios'],
             'device_id' => ['required', 'string'],
             'fcm_token' => ['required', 'string'],
+            'voip_token' => ['nullable', 'string'],
             'app_version' => ['nullable', 'string'],
         ];
     }

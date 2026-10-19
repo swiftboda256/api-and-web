@@ -18,6 +18,7 @@ class UpdateDeviceRequest extends FormRequest
     {
         return [
             'fcm_token' => ['nullable', 'string'],
+            'voip_token' => ['nullable', 'string'],
             'app_version' => ['nullable', 'string', 'max:50'],
             'active' => ['sometimes', 'boolean'],
         ];

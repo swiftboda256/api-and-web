@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\Vehicle;
 use App\Models\VehicleType;
 use App\Models\Zone;
+use App\Services\Push\ApnsVoipGateway;
 use App\Services\Push\FcmGateway;
 use App\Services\Push\PushMessage;
 use Clickbar\Magellan\Data\Geometries\LineString;
@@ -25,7 +26,7 @@ beforeEach(function () {
     config(['app.timezone' => 'Africa/Kampala']);
     date_default_timezone_set('Africa/Kampala');
 
-    $this->push = new class(Mockery::mock(Messaging::class)) extends FcmGateway
+    $this->push = new class(Mockery::mock(Messaging::class), new ApnsVoipGateway) extends FcmGateway
     {
         /** @var list<array{0: int|null, 1: PushMessage}> */
         public array $sent = [];

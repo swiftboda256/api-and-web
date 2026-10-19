@@ -15,10 +15,6 @@ class TransactionObserver
 {
     private const array EXCLUDED_TYPES = ['topup', 'withdrawal', 'withdrawal_charge'];
 
-    public function __construct(
-        private readonly FcmGateway $push,
-    ) {}
-
     public function created(Transaction $transaction): void
     {
         $this->notifyIfBalanceChanged($transaction);
@@ -43,7 +39,10 @@ class TransactionObserver
         $isCredit = $transaction->direction === 'credit';
         $amount = "{$transaction->currency_code} ".number_format((float) $transaction->amount);
 
-        $this->push->sendToUser($transaction->user, new PushMessage(
+        // Resolved lazily -- most Transaction writes never reach this point (no wallet_id,
+        // not yet completed, or an excluded type), so FcmGateway's real Messaging dependency
+        // is never touched unless a push is actually about to send.
+        app(FcmGateway::class)->sendToUser($transaction->user, new PushMessage(
             type: $isCredit ? 'wallet_credited' : 'wallet_debited',
             id: $transaction->id,
             title: $isCredit ? 'Wallet credited' : 'Wallet debited',

@@ -22,6 +22,7 @@ class DeviceResource extends JsonResource
             'device_type' => $this->device_type,
             'app_version' => $this->app_version,
             'fcm_token' => $this->fcm_token,
+            'voip_token' => $this->voip_token,
             'active' => $this->active,
             'last_seen_at' => $this->last_seen_at,
             'created_at' => $this->created_at,

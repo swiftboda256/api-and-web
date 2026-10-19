@@ -36,7 +36,7 @@ final readonly class PushMessage
         public string $title = '',
         public string $body = '',
         public array $data = [],
-        public string $sound = 'default',
+        public ?string $sound = 'default',
         public ?string $interruptionLevel = null,
         public bool $silent = false,
         public ?int $ttlSeconds = null,
@@ -67,6 +67,31 @@ final readonly class PushMessage
             collapseKey: $this->collapseKey,
             expiresAt: $this->expiresAt,
             badge: $badge,
+            contentAvailable: $this->contentAvailable,
+            persist: $this->persist,
+        );
+    }
+
+    /**
+     * A copy with no `aps.sound` -- used when a VoIP push is also ringing this device for
+     * the same event, so the FCM alert doesn't additionally play a sound (avoiding a double
+     * ring; see docs/new_IOS_PUSH_BACKEND_GUIDE.md §10.4). The alert itself is kept.
+     */
+    public function withoutSound(): self
+    {
+        return new self(
+            type: $this->type,
+            id: $this->id,
+            title: $this->title,
+            body: $this->body,
+            data: $this->data,
+            sound: null,
+            interruptionLevel: $this->interruptionLevel,
+            silent: $this->silent,
+            ttlSeconds: $this->ttlSeconds,
+            collapseKey: $this->collapseKey,
+            expiresAt: $this->expiresAt,
+            badge: $this->badge,
             contentAvailable: $this->contentAvailable,
             persist: $this->persist,
         );

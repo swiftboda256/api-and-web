@@ -13,6 +13,7 @@ use App\Models\Vehicle;
 use App\Models\VehicleType;
 use App\Models\Wallet;
 use App\Models\Zone;
+use App\Services\Push\ApnsVoipGateway;
 use App\Services\Push\FcmGateway;
 use App\Services\Push\PushMessage;
 use App\Services\Rider\RiderKycService;
@@ -35,7 +36,7 @@ use Laravel\Sanctum\Sanctum;
  */
 beforeEach(function () {
     // Records what would be sent, to whom.
-    $this->push = new class(Mockery::mock(Messaging::class)) extends FcmGateway
+    $this->push = new class(Mockery::mock(Messaging::class), new ApnsVoipGateway) extends FcmGateway
     {
         /** @var list<array{0: int|null, 1: PushMessage}> */
         public array $sent = [];
@@ -154,7 +155,7 @@ test('the gateway sends only to the user\'s active device', function () {
     UserDevice::query()->create(['user_id' => $user->id, 'device_type' => 'android', 'device_id' => 'old', 'fcm_token' => 'old-token', 'active' => false]);
     UserDevice::query()->create(['user_id' => $user->id, 'device_type' => 'android', 'device_id' => 'new', 'fcm_token' => 'active-token', 'active' => true, 'last_seen_at' => now()]);
 
-    (new FcmGateway($messaging))->sendToUser($user, new PushMessage(type: 'trip_started', id: 1, title: 'T', body: 'B'));
+    (new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($user, new PushMessage(type: 'trip_started', id: 1, title: 'T', body: 'B'));
 });
 
 test('booking rings every nearby rider with a timed job offer', function () {
@@ -362,7 +363,7 @@ test('sending a push also writes it to the user\'s database notifications', func
     $user = User::factory()->create();
     UserDevice::query()->create(['user_id' => $user->id, 'device_type' => 'android', 'device_id' => 'd', 'fcm_token' => 'token', 'active' => true]);
 
-    (new FcmGateway($messaging))->sendToUser($user, new PushMessage(
+    (new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($user, new PushMessage(
         type: 'trip_completed',
         id: 42,
         title: 'You have arrived',
@@ -385,7 +386,7 @@ test('a silent push is not written to the database', function () {
     $user = User::factory()->create();
     UserDevice::query()->create(['user_id' => $user->id, 'device_type' => 'android', 'device_id' => 'd', 'fcm_token' => 'token', 'active' => true]);
 
-    (new FcmGateway($messaging))->sendToUser($user, new PushMessage(type: 'ride_offer_cancelled', id: 9, silent: true));
+    (new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($user, new PushMessage(type: 'ride_offer_cancelled', id: 9, silent: true));
 
     expect($user->notifications()->count())->toBe(0);
 });
@@ -397,7 +398,7 @@ test('a push opted out of persistence is not written to the database', function 
     $user = User::factory()->create();
     UserDevice::query()->create(['user_id' => $user->id, 'device_type' => 'android', 'device_id' => 'd', 'fcm_token' => 'token', 'active' => true]);
 
-    (new FcmGateway($messaging))->sendToUser($user, new PushMessage(type: 'ride_offer', id: 9, title: 'New job', body: 'Nearby', persist: false));
+    (new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($user, new PushMessage(type: 'ride_offer', id: 9, title: 'New job', body: 'Nearby', persist: false));
 
     expect($user->notifications()->count())->toBe(0);
 });
@@ -406,7 +407,7 @@ test('a push with no badge of its own gets the recipient\'s unread notification 
     $user = User::factory()->create();
     UserDevice::query()->create(['user_id' => $user->id, 'device_type' => 'android', 'device_id' => 'd', 'fcm_token' => 'token', 'active' => true]);
 
-    $spy = new class(Mockery::mock(Messaging::class)) extends FcmGateway
+    $spy = new class(Mockery::mock(Messaging::class), new ApnsVoipGateway) extends FcmGateway
     {
         public array $captured = [];
 
@@ -429,7 +430,7 @@ test('a ride offer keeps its own badge instead of the unread notification count'
     $user = User::factory()->create();
     UserDevice::query()->create(['user_id' => $user->id, 'device_type' => 'android', 'device_id' => 'd', 'fcm_token' => 'token', 'active' => true]);
 
-    $spy = new class(Mockery::mock(Messaging::class)) extends FcmGateway
+    $spy = new class(Mockery::mock(Messaging::class), new ApnsVoipGateway) extends FcmGateway
     {
         public array $captured = [];
 
@@ -453,7 +454,7 @@ test('a token the provider reports as unregistered is deactivated', function () 
         SendReport::failure(MessageTarget::with('token', 'dead-token'), NotFound::becauseTokenNotFound('dead-token')),
     ]));
 
-    (new FcmGateway($messaging))->sendToUser($user, new PushMessage(type: 'trip_started', id: 1, title: 'T', body: 'B'));
+    (new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($user, new PushMessage(type: 'trip_started', id: 1, title: 'T', body: 'B'));
 
     expect($device->refresh()->active)->toBeFalse();
 });

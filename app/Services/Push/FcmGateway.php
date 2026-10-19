@@ -20,6 +20,7 @@ class FcmGateway
 {
     public function __construct(
         private readonly Messaging $messaging,
+        private readonly ApnsVoipGateway $voip,
     ) {}
 
     /**
@@ -28,27 +29,42 @@ class FcmGateway
      */
     public function sendToUser(?User $user, PushMessage $message): void
     {
-        if ($user !== null && $message->persist && ! $message->silent) {
+        if ($user === null) {
+            return;
+        }
+
+        if ($message->persist && ! $message->silent) {
             $user->notify(new PushEventNotification($message));
         }
 
         // Most pushes don't set their own badge -- default it to the recipient's unread
         // count (now including anything just persisted above). A silent push has no alert
         // to badge, and some pushes (e.g. a ride offer) carry a more specific count already.
-        if ($user !== null && $message->badge === null && ! $message->silent) {
+        if ($message->badge === null && ! $message->silent) {
             $message = $message->withBadge($user->unreadNotifications()->count());
         }
 
-        $token = $user?->devices()
+        $device = $user->devices()
             ->where('active', true)
             ->whereNotNull('fcm_token')
             ->where('fcm_token', '!=', '')
             ->latest('last_seen_at')
-            ->value('fcm_token');
+            ->first();
 
-        if ($token !== null) {
-            $this->sendToTokens([(string) $token], $message);
+        if ($device === null) {
+            return;
         }
+
+        // On a ringing event, a device with a VoIP token also gets rung there -- the only
+        // way to show a CallKit call once the app is swiped away. The FCM alert then drops
+        // its own sound so the two pushes don't double-ring (see ApnsVoipGateway).
+        $ringsOnVoip = $device->voip_token !== null && in_array($message->type, ApnsVoipGateway::RINGING_TYPES, true);
+
+        if ($ringsOnVoip) {
+            $this->voip->sendRingingPush($user, $device, $message);
+        }
+
+        $this->sendToTokens([(string) $device->fcm_token], $ringsOnVoip ? $message->withoutSound() : $message);
     }
 
     /**

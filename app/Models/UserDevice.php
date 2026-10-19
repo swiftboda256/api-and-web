@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $device_type
  * @property string|null $device_id
  * @property string|null $fcm_token
+ * @property string|null $voip_token
  * @property string|null $app_version
  * @property string|null $ip_address
  * @property bool $active
@@ -24,6 +25,7 @@ class UserDevice extends BaseModel
         'device_type',
         'device_id',
         'fcm_token',
+        'voip_token',
         'app_version',
         'ip_address',
         'last_seen_at',
