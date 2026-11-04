@@ -496,13 +496,6 @@ readonly class RideShareMatchingService
 
     private function notifyDriverOfJoinRequest(Trip $trip, TripPassenger $passenger, RideShareRequest $request, float $estimatedFare): void
     {
-        Log::info('Notifying driver of ride-share join request', [
-            'trip_id' => $trip->id,
-            'trip_passenger_id' => $passenger->id,
-            'driver_id' => $trip->rider->id,
-            'driver_name' => $trip->rider->name,
-        ]);
-
         $this->pushGateway->sendToUser($trip->rider, new PushMessage(
             type: 'ride_share_join_request',
             id: $trip->id,
