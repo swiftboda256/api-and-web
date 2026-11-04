@@ -18,6 +18,7 @@ use Clickbar\Magellan\Data\Geometries\Point;
 use Clickbar\Magellan\Database\PostgisFunctions\ST;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -495,6 +496,13 @@ readonly class RideShareMatchingService
 
     private function notifyDriverOfJoinRequest(Trip $trip, TripPassenger $passenger, RideShareRequest $request, float $estimatedFare): void
     {
+        Log::info('Notifying driver of ride-share join request', [
+            'trip_id' => $trip->id,
+            'trip_passenger_id' => $passenger->id,
+            'driver_id' => $trip->rider->id,
+            'driver_name' => $trip->rider->name,
+        ]);
+
         $this->pushGateway->sendToUser($trip->rider, new PushMessage(
             type: 'ride_share_join_request',
             id: $trip->id,
