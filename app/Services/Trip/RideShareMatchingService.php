@@ -18,6 +18,7 @@ use Clickbar\Magellan\Data\Geometries\Point;
 use Clickbar\Magellan\Database\PostgisFunctions\ST;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -81,6 +82,14 @@ readonly class RideShareMatchingService
                 ->decrement('available_seats', $request->seatsRequested);
 
             if ($claimed > 0) {
+                Log::info('Matched ride-share request to in-progress trip', [
+                    'trip_id' => $candidate['trip']->id,
+                    'trip_status' => $candidate['trip']->status,
+                    'vehicle_type_id' => $candidate['trip']->vehicle_type_id,
+                    'detour_minutes' => $candidate['detour_minutes'],
+                    'detour_km' => $candidate['detour_km'],
+                ]);
+
                 return $this->createOffer($request, $pricingRule, $passenger, $candidate);
             }
         }

@@ -7,11 +7,11 @@ use App\Models\WaitlistEntry;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\View\View;
 
-class WaitlistController extends Controller
+class WebController extends Controller
 {
     public function index(): View
     {
-        return view('waitlist.coming-soon');
+        return view('home');
     }
 
     public function store(JoinWaitlistRequest $request): RedirectResponse
