@@ -40,6 +40,7 @@ class DeliveryResource extends JsonResource
             'completed_at' => $trip->completed_at,
             'rider' => $trip->relationLoaded('rider') && $trip->rider ? [
                 'name' => $trip->rider->name,
+                'avatar_url' => $trip->rider->avatar_url,
                 'rider_ref' => $trip->rider->riderProfile?->rider_ref,
                 'gender' => $trip->rider->riderProfile?->gender,
                 'phone' => $trip->rider->phone,
@@ -57,6 +58,7 @@ class DeliveryResource extends JsonResource
                 'id' => $this->sender->id,
                 'name' => $this->sender->name,
                 'phone' => $this->sender->phone,
+                'avatar_url' => $this->sender->avatar_url,
             ] : null,
             'status' => $this->status,
             'recipient_name' => $this->recipient_name,

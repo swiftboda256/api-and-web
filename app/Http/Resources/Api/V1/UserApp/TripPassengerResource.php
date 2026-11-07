@@ -50,6 +50,7 @@ class TripPassengerResource extends JsonResource
             // before any driver accepted.
             'rider' => $this->matched_at !== null && $trip->relationLoaded('rider') && $trip->rider ? [
                 'name' => $trip->rider->name,
+                'avatar_url' => $trip->rider->avatar_url,
                 'rider_ref' => $trip->rider->riderProfile?->rider_ref,
                 'gender' => $trip->rider->riderProfile?->gender,
                 'phone' => $trip->rider->phone,
@@ -67,6 +68,7 @@ class TripPassengerResource extends JsonResource
                 'id' => $this->customer->id,
                 'name' => $this->customer->name,
                 'phone' => $this->customer->phone,
+                'avatar_url' => $this->customer->avatar_url,
             ] : null,
             'status' => $this->status,
             'seats_requested' => $this->seats_requested,
