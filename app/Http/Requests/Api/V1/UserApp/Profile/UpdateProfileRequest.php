@@ -23,7 +23,7 @@ class UpdateProfileRequest extends FormRequest
             'other_name' => ['nullable', 'string', 'max:255'],
             'email' => ['nullable', 'email', 'max:255', Rule::unique('users', 'email')->ignore($this->user()?->id)],
             'phone' => ['sometimes', 'required', 'string', 'regex:/^\+?[1-9]\d{6,14}$/', Rule::unique('users', 'phone')->ignore($this->user()?->id)],
-            'avatar' => ['sometimes', 'file', 'image', 'mimes:jpg,jpeg,png', 'max:2048'],
+            'avatar_url' => ['sometimes', 'file', 'image', 'mimes:jpg,jpeg,png', 'max:2048'],
         ];
     }
 }

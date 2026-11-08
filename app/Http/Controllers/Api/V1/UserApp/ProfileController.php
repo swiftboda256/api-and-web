@@ -27,7 +27,7 @@ class ProfileController extends Controller
 
         $data = $request->validated();
 
-        $user->fill(Arr::except($data, ['avatar']));
+        $user->fill(Arr::except($data, ['avatar_url']));
 
         if (! empty($data['avatar'])) {
             $user->avatar_url = $this->storeAvatar($user, $data['avatar']);
