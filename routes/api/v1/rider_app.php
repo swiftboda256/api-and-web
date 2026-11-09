@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\RiderApp\AuthController;
+use App\Http\Controllers\Api\V1\RiderApp\ChatController;
 use App\Http\Controllers\Api\V1\RiderApp\ConfigurationController;
 use App\Http\Controllers\Api\V1\RiderApp\DeviceController;
 use App\Http\Controllers\Api\V1\RiderApp\EmergencyContactController;
@@ -68,6 +69,13 @@ Route::middleware(['auth:sanctum', 'role:rider'])->group(function () {
         Route::patch('{trip}/passengers/{passenger}/settle-cash', [RideController::class, 'settlePassengerCash'])->name('passengers.settle-cash')->whereNumber(['trip', 'passenger']);
         Route::patch('{trip}/deliveries/{delivery}/settle-cash', [RideController::class, 'settleDeliveryCash'])->name('deliveries.settle-cash')->whereNumber(['trip', 'delivery']);
         Route::post('{trip}/location', [RideController::class, 'logLocation'])->name('log-location');
+        Route::get('{trip}/chat', [ChatController::class, 'index'])->name('chat.index')->whereNumber('trip');
+        Route::get('{trip}/passengers/{passenger}/chat/messages', [ChatController::class, 'passengerMessages'])->name('chat.passengers.messages')->whereNumber(['trip', 'passenger']);
+        Route::post('{trip}/passengers/{passenger}/chat/messages', [ChatController::class, 'sendToPassenger'])->name('chat.passengers.send')->whereNumber(['trip', 'passenger']);
+        Route::post('{trip}/passengers/{passenger}/chat/read', [ChatController::class, 'markPassengerRead'])->name('chat.passengers.read')->whereNumber(['trip', 'passenger']);
+        Route::get('{trip}/deliveries/{delivery}/chat/messages', [ChatController::class, 'deliveryMessages'])->name('chat.deliveries.messages')->whereNumber(['trip', 'delivery']);
+        Route::post('{trip}/deliveries/{delivery}/chat/messages', [ChatController::class, 'sendToDelivery'])->name('chat.deliveries.send')->whereNumber(['trip', 'delivery']);
+        Route::post('{trip}/deliveries/{delivery}/chat/read', [ChatController::class, 'markDeliveryRead'])->name('chat.deliveries.read')->whereNumber(['trip', 'delivery']);
     });
 
     Route::prefix('notifications')->name('notifications.')->group(function () {

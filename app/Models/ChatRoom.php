@@ -8,8 +8,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * @property int $id
- * @property string $type
+ * @property 'one_to_one'|'support'|'trip' $type
  * @property int|null $support_ticket_id
+ * @property int|null $trip_id
  * @property string|null $recent_message
  * @property CarbonImmutable|null $last_message_at
  * @property CarbonImmutable|null $created_at
@@ -20,6 +21,7 @@ class ChatRoom extends BaseModel
     protected $fillable = [
         'type',
         'support_ticket_id',
+        'trip_id',
         'recent_message',
         'last_message_at',
     ];
@@ -37,6 +39,14 @@ class ChatRoom extends BaseModel
     public function supportTicket(): BelongsTo
     {
         return $this->belongsTo(SupportTicket::class);
+    }
+
+    /**
+     * @return BelongsTo<Trip, $this>
+     */
+    public function trip(): BelongsTo
+    {
+        return $this->belongsTo(Trip::class);
     }
 
     /**

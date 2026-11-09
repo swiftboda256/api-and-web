@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\UserApp\AddressController;
 use App\Http\Controllers\Api\V1\UserApp\AuthController;
+use App\Http\Controllers\Api\V1\UserApp\ChatController;
 use App\Http\Controllers\Api\V1\UserApp\ConfigurationController;
 use App\Http\Controllers\Api\V1\UserApp\DeviceController;
 use App\Http\Controllers\Api\V1\UserApp\EmergencyContactController;
@@ -67,6 +68,10 @@ Route::middleware(['auth:sanctum', 'role:customer'])->group(function () {
         Route::post('/{trip}/rate', [TripController::class, 'rateRider'])->name('rate-rider')->whereNumber('trip');
         Route::post('ride-share/{tripPassenger}/rate', [TripController::class, 'ratePassengerDriver'])->name('rate-ride-share')->whereNumber('tripPassenger');
         Route::post('delivery/{delivery}/rate', [TripController::class, 'rateDeliveryDriver'])->name('rate-delivery')->whereNumber('delivery');
+        Route::get('{trip}/chat', [ChatController::class, 'show'])->name('chat.show')->whereNumber('trip');
+        Route::get('{trip}/chat/messages', [ChatController::class, 'messages'])->name('chat.messages')->whereNumber('trip');
+        Route::post('{trip}/chat/messages', [ChatController::class, 'send'])->name('chat.send')->whereNumber('trip');
+        Route::post('{trip}/chat/read', [ChatController::class, 'markRead'])->name('chat.read')->whereNumber('trip');
     });
 
     Route::prefix('wallet')->name('wallet.')->group(function () {

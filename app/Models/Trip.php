@@ -292,6 +292,14 @@ class Trip extends BaseModel
     }
 
     /**
+     * @return HasMany<ChatRoom, $this>
+     */
+    public function chatRooms(): HasMany
+    {
+        return $this->hasMany(ChatRoom::class);
+    }
+
+    /**
      * @return MorphMany<Transaction, $this>
      */
     public function transactions(): MorphMany
