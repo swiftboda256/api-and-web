@@ -2,6 +2,7 @@
 
 namespace App\Services\SupportTicket;
 
+use App\Events\ChatMessageSent;
 use App\Models\ChatMessage;
 use App\Models\ChatMessageAttachment;
 use App\Models\ChatRoom;
@@ -11,6 +12,7 @@ use App\Models\User;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 readonly class SupportTicketService
 {
@@ -50,7 +52,7 @@ readonly class SupportTicketService
      */
     public function create(User $user, array $data): SupportTicket
     {
-        return DB::transaction(function () use ($user, $data): SupportTicket {
+        [$ticket, $message] = DB::transaction(function () use ($user, $data): array {
             $ticket = SupportTicket::query()->create([
                 'ticket_number' => $this->generateTicketNumber(),
                 'user_id' => $user->id,
@@ -77,6 +79,7 @@ readonly class SupportTicketService
                 'chat_room_id' => $chatRoom->id,
                 'sender_id' => $user->id,
                 'message' => $data['message'],
+                'read_by' => [$user->id],
             ]);
 
             foreach ($data['attachments'] ?? [] as $url) {
@@ -87,8 +90,98 @@ readonly class SupportTicketService
                 ]);
             }
 
-            return $ticket->load(['category', 'chatRoom.messages']);
+            return [$ticket->load(['category', 'chatRoom.messages']), $message];
         });
+
+        event(new ChatMessageSent($message->load(['sender', 'attachments'])));
+
+        return $ticket;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    public function reply(User $user, int $ticketId, array $data): ChatMessage
+    {
+        $ticket = $this->ownTicket($user, $ticketId);
+        $this->assertTicketOpen($ticket);
+
+        $message = DB::transaction(function () use ($ticket, $user, $data): ChatMessage {
+            $chatRoom = $ticket->chatRoom;
+
+            $message = ChatMessage::query()->create([
+                'chat_room_id' => $chatRoom->id,
+                'sender_id' => $user->id,
+                'message' => $data['message'] ?? null,
+                'read_by' => [$user->id],
+            ]);
+
+            foreach ($data['attachments'] ?? [] as $url) {
+                ChatMessageAttachment::query()->create([
+                    'chat_message_id' => $message->id,
+                    'type' => $this->guessAttachmentType($url),
+                    'url' => $url,
+                ]);
+            }
+
+            $chatRoom->update([
+                'recent_message' => $message->message,
+                'last_message_at' => now(),
+            ]);
+
+            return $message;
+        });
+
+        $message->load(['sender', 'attachments']);
+
+        event(new ChatMessageSent($message));
+
+        return $message;
+    }
+
+    public function markRead(User $user, int $ticketId): int
+    {
+        $ticket = $this->ownTicket($user, $ticketId);
+        $room = $ticket->chatRoom;
+
+        $touched = 0;
+
+        $room->messages()
+            ->where('sender_id', '!=', $user->id)
+            ->where('is_internal_note', false)
+            ->get()
+            ->each(function (ChatMessage $message) use ($user, &$touched): void {
+                if (in_array($user->id, $message->read_by, true)) {
+                    return;
+                }
+
+                $message->update(['read_by' => [...$message->read_by, $user->id]]);
+                $touched++;
+            });
+
+        return $touched;
+    }
+
+    private function ownTicket(User $user, int $ticketId): SupportTicket
+    {
+        return SupportTicket::query()
+            ->where('user_id', $user->id)
+            ->where('id', $ticketId)
+            ->with('chatRoom')
+            ->firstOrFail();
+    }
+
+    /**
+     * Mirrors the trip-chat closing rule: write-enabled until the ticket is resolved/closed,
+     * history stays readable after.
+     */
+    private function assertTicketOpen(SupportTicket $ticket): void
+    {
+        if (in_array($ticket->status, ['resolved', 'closed'], true)) {
+            throw ValidationException::withMessages([
+                'status' => 'This ticket is closed. Open a new ticket if you need further help.',
+            ]);
+        }
     }
 
     private function guessAttachmentType(string $url): string

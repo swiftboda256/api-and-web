@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Api\V1\RiderApp;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\UserApp\SupportTicket\IndexSupportTicketRequest;
+use App\Http\Requests\Api\V1\UserApp\SupportTicket\ReplySupportTicketRequest;
 use App\Http\Requests\Api\V1\UserApp\SupportTicket\StoreSupportTicketRequest;
+use App\Http\Resources\Api\V1\UserApp\ChatMessageResource;
 use App\Http\Resources\Api\V1\UserApp\SupportTicketCollection;
 use App\Http\Resources\Api\V1\UserApp\SupportTicketResource;
 use App\Models\User;
@@ -38,5 +40,25 @@ class SupportTicketController extends Controller
         $ticket = $supportTicketService->create($user, $request->validated());
 
         return self::success(new SupportTicketResource($ticket), status: 201);
+    }
+
+    public function reply(ReplySupportTicketRequest $request, int $id, SupportTicketService $supportTicketService): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $message = $supportTicketService->reply($user, $id, $request->validated());
+
+        return self::success(new ChatMessageResource($message), status: 201);
+    }
+
+    public function markRead(Request $request, int $id, SupportTicketService $supportTicketService): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $count = $supportTicketService->markRead($user, $id);
+
+        return self::success(['marked_read' => $count]);
     }
 }

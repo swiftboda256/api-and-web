@@ -96,6 +96,8 @@ Route::middleware(['auth:sanctum', 'role:rider'])->group(function () {
         Route::get('/', [SupportTicketController::class, 'index'])->name('index');
         Route::get('/{id}', [SupportTicketController::class, 'show'])->name('show');
         Route::post('/', [SupportTicketController::class, 'store'])->name('store');
+        Route::post('/{id}/messages', [SupportTicketController::class, 'reply'])->name('reply');
+        Route::post('/{id}/read', [SupportTicketController::class, 'markRead'])->name('read');
     });
 
     Route::prefix('emergency-contacts')->name('emergency-contacts.')->group(function () {
