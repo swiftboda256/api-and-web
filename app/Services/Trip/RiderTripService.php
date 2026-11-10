@@ -153,10 +153,29 @@ readonly class RiderTripService
             ]);
         }
 
+        if (! $riderProfile->current_location) {
+            throw ValidationException::withMessages([
+                'current_location' => 'Please update your current location before accepting rides.',
+            ]);
+        }
+
+        // Claiming bypasses the nearby() list (a client could call this with any trip id), so
+        // the dispatch radius has to be re-checked here too -- otherwise a rider outside it
+        // could still accept a trip the dispatch/browse list would never have shown them.
+        $radiusMeters = (float) Configuration::get('dispatch_radius_km', 5) * 1000;
+
+        $pickupStopLocation = DB::raw(<<<'SQL'
+            COALESCE(
+                (SELECT location FROM trip_stops WHERE trip_stops.trip_id = trips.id AND trip_stops.stop_type = 'pickup' AND trip_stops.sequence IS NOT NULL ORDER BY trip_stops.sequence ASC LIMIT 1),
+                (SELECT location FROM delivery_stops WHERE delivery_stops.trip_id = trips.id AND delivery_stops.stop_type = 'pickup' AND delivery_stops.sequence IS NOT NULL ORDER BY delivery_stops.sequence ASC LIMIT 1)
+            )
+            SQL);
+
         $claimed = Trip::query()
             ->where('id', $tripId)
             ->whereIn('status', ['requested', 'searching'])
             ->whereNull('rider_id')
+            ->where(ST::distanceSphere($pickupStopLocation, $riderProfile->current_location), '<=', $radiusMeters)
             ->update([
                 'status' => 'accepted',
                 'rider_id' => $user->id,
