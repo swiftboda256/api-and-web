@@ -28,6 +28,7 @@ class AuthController extends Controller
         $phone = $request->string('phone')->toString();
 
         $userAccountService->ensureNotSuspended($phone);
+        $userAccountService->ensureNotRegisteredAsCustomer($phone);
 
         $otpService->generateOTP($phone, null, self::OTP_CHANNEL, self::PURPOSE, self::AUTOCOMPLETE_CODE);
 
@@ -36,6 +37,7 @@ class AuthController extends Controller
 
     public function verifyOtp(VerifyOtpRequest $request, OtpService $otpService, UserAccountService $userAccountService, RiderProfileService $riderProfileService): JsonResponse
     {
+
         $phone = $request->string('phone')->toString();
         $code = $request->string('code')->toString();
         $device_id = $request->string('device_id');
@@ -45,6 +47,8 @@ class AuthController extends Controller
         $app_version = $request->input('app_version');
 
         $userAccountService->ensureNotSuspended($phone);
+        // redundancy check
+        $userAccountService->ensureNotRegisteredAsCustomer($phone);
 
         $otpService->verify($phone, $code, self::PURPOSE);
 

@@ -169,6 +169,40 @@ class UserAccountService
         }
     }
 
+    /**
+     * Blocks an existing rider from registering/logging in as a passenger on the customer app.
+     */
+    public function ensureNotRegisteredAsRider(string $phone): void
+    {
+        $isRider = User::query()
+            ->where('phone', $phone)
+            ->role('rider')
+            ->exists();
+
+        if ($isRider) {
+            throw ValidationException::withMessages([
+                'phone' => 'This phone number is already registered as a rider. Please use the rider app to log in.',
+            ]);
+        }
+    }
+
+    /**
+     * Blocks an existing passenger from registering/logging in as a rider on the rider app.
+     */
+    public function ensureNotRegisteredAsCustomer(string $phone): void
+    {
+        $isCustomer = User::query()
+            ->where('phone', $phone)
+            ->role('customer')
+            ->exists();
+
+        if ($isCustomer) {
+            throw ValidationException::withMessages([
+                'phone' => 'This phone number is already registered as a passenger. Please use the passenger app to log in.',
+            ]);
+        }
+    }
+
     public function ensureNoActiveTrip(User $user): void
     {
         if ($this->hasActiveTripAsCustomer($user->id) || $this->hasActiveTripAsRider($user->id)) {
