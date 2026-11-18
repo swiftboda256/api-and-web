@@ -64,6 +64,10 @@ class TripPassengerResource extends JsonResource
                 'name' => $trip->vehicleType->name,
                 'code' => $trip->vehicleType->code,
             ] : null,
+            'vehicle' => $trip->relationLoaded('vehicle') && $trip->vehicle ? [
+                'plate_number' => $trip->vehicle->plate_number,
+                'color' => $trip->vehicle->color,
+            ] : null,
             'customer' => $this->relationLoaded('customer') && $this->customer ? [
                 'id' => $this->customer->id,
                 'name' => $this->customer->name,

@@ -280,7 +280,7 @@ readonly class TripService
      */
     private function passengerEagerLoads(): array
     {
-        return ['customer', 'fareBreakdown', 'stops', 'cancellationReason', 'trip.rider.riderProfile', 'trip.vehicleType'];
+        return ['customer', 'fareBreakdown', 'stops', 'cancellationReason', 'trip.rider.riderProfile', 'trip.vehicleType', 'trip.vehicle'];
     }
 
     /**
@@ -291,7 +291,7 @@ readonly class TripService
      */
     private function deliveryEagerLoads(): array
     {
-        return ['sender', 'stops', 'cancellationReason', 'trip.rider.riderProfile', 'trip.vehicleType'];
+        return ['sender', 'stops', 'cancellationReason', 'trip.rider.riderProfile', 'trip.vehicleType', 'trip.vehicle'];
     }
 
     /**
@@ -416,7 +416,7 @@ readonly class TripService
             $this->dispatch->startSearch($trip);
         }
 
-        return $passenger->load(['customer', 'fareBreakdown', 'trip.vehicleType', 'stops']);
+        return $passenger->load(['customer', 'fareBreakdown', 'trip.vehicleType', 'trip.vehicle', 'stops']);
     }
 
     /**
@@ -445,11 +445,11 @@ readonly class TripService
         $offered = $this->rideShareMatching->offer($request, $pricingRule);
 
         if ($offered !== null) {
-            return $offered->load(['customer', 'fareBreakdown', 'trip.rider.riderProfile', 'trip.vehicleType', 'stops']);
+            return $offered->load(['customer', 'fareBreakdown', 'trip.rider.riderProfile', 'trip.vehicleType', 'trip.vehicle', 'stops']);
         }
 
         return $this->startRideShareTrip($request, $pricingRule, null, $requestedAt)
-            ->load(['customer', 'fareBreakdown', 'trip.vehicleType', 'stops']);
+            ->load(['customer', 'fareBreakdown', 'trip.vehicleType', 'trip.vehicle', 'stops']);
     }
 
     /**
@@ -670,7 +670,7 @@ readonly class TripService
             $this->dispatch->startSearch($trip);
         }
 
-        return $delivery->load(['sender', 'trip.vehicleType', 'stops']);
+        return $delivery->load(['sender', 'trip.vehicleType', 'trip.vehicle', 'stops']);
     }
 
     /**
@@ -695,7 +695,7 @@ readonly class TripService
             );
 
             if ($matched !== null) {
-                return $matched->load(['sender', 'trip.rider.riderProfile', 'trip.vehicleType', 'stops']);
+                return $matched->load(['sender', 'trip.rider.riderProfile', 'trip.vehicleType', 'trip.vehicle', 'stops']);
             }
         }
 
@@ -779,7 +779,7 @@ readonly class TripService
             $this->dispatch->startSearch($trip);
         }
 
-        return $delivery->load(['sender', 'trip.vehicleType', 'stops']);
+        return $delivery->load(['sender', 'trip.vehicleType', 'trip.vehicle', 'stops']);
     }
 
     /**

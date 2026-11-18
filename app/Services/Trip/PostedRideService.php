@@ -260,7 +260,7 @@ readonly class PostedRideService
 
         $this->notifyDriverOfBookingRequest($trip, $passenger);
 
-        return $passenger->load(['customer', 'fareBreakdown', 'stops', 'cancellationReason', 'trip.rider.riderProfile', 'trip.vehicleType']);
+        return $passenger->load(['customer', 'fareBreakdown', 'stops', 'cancellationReason', 'trip.rider.riderProfile', 'trip.vehicleType', 'trip.vehicle']);
     }
 
     /**
