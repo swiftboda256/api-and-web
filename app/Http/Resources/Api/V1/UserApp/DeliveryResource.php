@@ -54,6 +54,10 @@ class DeliveryResource extends JsonResource
                 'name' => $trip->vehicleType->name,
                 'code' => $trip->vehicleType->code,
             ] : null,
+            'vehicle' => $trip->relationLoaded('vehicle') && $trip->vehicle ? [
+                'plate_number' => $trip->vehicle->plate_number,
+                'color' => $trip->vehicle->color,
+            ] : null,
             'sender' => $this->relationLoaded('sender') && $this->sender ? [
                 'id' => $this->sender->id,
                 'name' => $this->sender->name,
