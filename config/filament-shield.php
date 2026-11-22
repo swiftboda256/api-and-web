@@ -3,6 +3,7 @@
 declare(strict_types=1);
 use App\Filament\Pages\Dashboard;
 use App\Filament\Pages\Kyc\KycReview;
+use App\Filament\Pages\Support\SupportTicketDetails;
 use App\Filament\Resources\Transactions\TransactionResource;
 use BezhanSalleh\FilamentShield\Resources\Roles\RoleResource;
 use Filament\Widgets\AccountWidget;
@@ -224,6 +225,8 @@ return [
             Dashboard::class,
             // Access follows KycReviews (View:KycReviews).
             KycReview::class,
+            // Access follows SupportTickets (View:SupportTickets).
+            SupportTicketDetails::class,
         ],
     ],
 
@@ -269,6 +272,10 @@ return [
         // and delete a rider's KYC document ("Delete:KycDocument").
         'review:kyc' => 'Review KYC (approve / reject)',
         'delete:kyc_document' => 'Delete KYC documents',
+        // Support Tickets: reply, add internal notes, change status/priority/category, assign to self
+        // ("Respond:SupportTicket"), and assign tickets to other agents ("Assign:SupportTicket").
+        'respond:support_ticket' => 'Respond to support tickets',
+        'assign:support_ticket' => 'Assign support tickets to others',
     ],
 
     /*

@@ -43,6 +43,7 @@ class AdminPanelProvider extends PanelProvider
             ->navigationGroups([
                 'Users',
                 'Trips',
+                'Support',
                 'Pricing',
                 'Finances',
                 'System',

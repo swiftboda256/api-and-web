@@ -3,6 +3,7 @@
 namespace App\Filament\Widgets;
 
 use App\Filament\Pages\Kyc\KycReviews;
+use App\Filament\Pages\Support\SupportTickets;
 use App\Filament\Resources\Transactions\TransactionResource;
 use App\Services\Dashboard\DashboardMetricsService;
 use BezhanSalleh\FilamentShield\Traits\HasWidgetShield;
@@ -11,7 +12,7 @@ use Filament\Widgets\Widget;
 
 /**
  * Work queues for admins. Items link to a filtered list where an admin page exists;
- * support tickets and delete requests have no admin page yet, so they're counts only.
+ * account delete requests have no admin page yet, so they're a count only.
  */
 class NeedsAttentionWidget extends Widget
 {
@@ -78,7 +79,7 @@ class NeedsAttentionWidget extends Widget
                 'icon' => Heroicon::OutlinedLifebuoy,
                 'tone' => $counts['urgent_tickets'] > 0 ? 'danger' : 'warning',
                 'hint' => $counts['urgent_tickets'] > 0 ? "{$counts['urgent_tickets']} high or urgent" : null,
-                'url' => null,
+                'url' => SupportTickets::canAccess() ? SupportTickets::getUrl(['tab' => 'open']) : null,
             ],
             [
                 'label' => 'Account delete requests',

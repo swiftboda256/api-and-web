@@ -26,7 +26,8 @@ readonly class SupportTicketService
             ->where('user_id', $user->id)
             ->when($filters['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
             ->when($filters['category_id'] ?? null, fn ($query, $categoryId) => $query->where('category_id', $categoryId))
-            ->with(['category', 'chatRoom.messages'])
+            // Agents' internal notes live in the same room; never send them to the app.
+            ->with(['category', 'chatRoom.messages' => fn ($query) => $query->where('is_internal_note', false)])
             ->orderByDesc('created_at')
             ->paginate((int) ($filters['per_page'] ?? 15));
     }
