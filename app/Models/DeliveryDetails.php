@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 /**
  * @property CarbonImmutable|null $picked_up_at
+ * @property CarbonImmutable|null $dropped_off_at
  */
 class DeliveryDetails extends BaseModel
 {

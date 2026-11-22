@@ -1,4 +1,6 @@
 <x-filament-panels::page>
+    @include('filament.resources.trips.partials.map-script')
+
     @php($trip = $this->trip)
     @php($manifestTotalFare = $this->manifestTotalFare())
     @php($manifestCount = $this->manifestCount())

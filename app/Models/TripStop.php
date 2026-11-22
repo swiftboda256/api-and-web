@@ -2,9 +2,15 @@
 
 namespace App\Models;
 
+use Carbon\CarbonImmutable;
 use Clickbar\Magellan\Data\Geometries\Point;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property 'pickup'|'dropoff'|null $stop_type
+ * @property Point|null $location
+ * @property CarbonImmutable|null $arrived_at
+ */
 class TripStop extends BaseModel
 {
     protected $fillable = [

@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 /**
  * @property 'requested'|'pending_approval'|'matched'|'arrived_pickup'|'picked_up'|'arrived_dropoff'|'dropped_off'|'cancelled' $status
  * @property CarbonImmutable|null $picked_up_at
+ * @property CarbonImmutable|null $dropped_off_at
  * @property CarbonImmutable|null $near_destination_notified_at
  * @property CarbonImmutable|null $request_expires_at
  * @property list<int>|null $declined_trip_ids
