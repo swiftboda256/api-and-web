@@ -1,6 +1,8 @@
 @php
     $documents = $this->documents;
     $labels = ['national_id' => 'National ID', 'driving_license' => 'Driving License'];
+    $canReview = $this->canReviewKyc();
+    $canDelete = $this->canDeleteKycDocuments();
 @endphp
 
 <div class="space-y-6">
@@ -10,11 +12,23 @@
         </div>
     @endif
 
-    <div>
-        <h3 class="text-sm font-medium text-gray-950 dark:text-white">Submitted documents</h3>
-        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            Compare the number on each document against the National ID / License number shown in the card above before approving.
-        </p>
+    <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+            <h3 class="text-sm font-medium text-gray-950 dark:text-white">Submitted documents</h3>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Compare the number on each document against the National ID / License number shown in the card above before approving.
+            </p>
+        </div>
+
+        @if (\App\Filament\Pages\Kyc\KycReviews::canAccess())
+            <a
+                href="{{ \App\Filament\Pages\Kyc\KycReview::getUrl(['record' => $rider->id]) }}"
+                class="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-white/10 dark:text-gray-200 dark:hover:bg-white/5"
+            >
+                <x-heroicon-o-identification class="h-4 w-4" />
+                Open in KYC review
+            </a>
+        @endif
     </div>
 
     @if ($documents->isEmpty())
@@ -52,7 +66,7 @@
                         </div>
 
                         <div class="flex shrink-0 items-center gap-2">
-                            @if ($document->status !== 'approved')
+                            @if ($canReview && $document->status !== 'approved')
                                 <button
                                     type="button"
                                     wire:click="approveDocument({{ $document->id }})"
@@ -115,7 +129,7 @@
                                             Preview
                                         </button>
 
-                                        @if ($document->status !== 'rejected')
+                                        @if ($canReview && $document->status !== 'rejected')
                                             <button
                                                 type="button"
                                                 wire:click="rejectDocument({{ $document->id }})"
@@ -126,16 +140,18 @@
                                             </button>
                                         @endif
 
-                                        <div class="my-1 border-t border-gray-100 dark:border-white/10"></div>
+                                        @if ($canDelete)
+                                            <div class="my-1 border-t border-gray-100 dark:border-white/10"></div>
 
-                                        <button
-                                            type="button"
-                                            wire:click="mountAction('deleteDocument', { documentId: {{ $document->id }} })"
-                                            @click="open = false"
-                                            class="block w-full px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/10"
-                                        >
-                                            Delete
-                                        </button>
+                                            <button
+                                                type="button"
+                                                wire:click="mountAction('deleteDocument', { documentId: {{ $document->id }} })"
+                                                @click="open = false"
+                                                class="block w-full px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/10"
+                                            >
+                                                Delete
+                                            </button>
+                                        @endif
                                     </div>
                                 </template>
                             </div>

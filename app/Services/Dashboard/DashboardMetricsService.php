@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Models\UserDeleteRequest;
 use App\Models\WaitlistEntry;
 use App\Models\WithdrawalRequest;
+use App\Services\Rider\KycQueue;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
@@ -128,9 +129,11 @@ class DashboardMetricsService
     public function attention(): array
     {
         return Cache::remember('dashboard:attention', self::CACHE_SECONDS, fn (): array => [
-            'kyc_review' => RiderProfile::query()->whereIn('kyc_status', ['pending', 'under_review'])->count(),
+            'kyc_review' => KycQueue::awaitingCount(),
             'documents' => Document::query()->where('status', 'pending')->count(),
-            'withdrawals' => WithdrawalRequest::query()->where('status', 'processing')->count(),
+            // Withdrawals are paid out automatically via Yo!; one still processing after 10 minutes is stuck
+            // (money already left the rider's wallet, outcome unknown).
+            'stuck_withdrawals' => WithdrawalRequest::query()->where('status', 'processing')->where('created_at', '<', now()->subMinutes(10))->count(),
             'stuck_transactions' => Transaction::query()->where('status', 'pending')->where('created_at', '<', now()->subMinutes(10))->count(),
             'failed_transactions' => Transaction::query()->where('status', 'failed')->where('created_at', '>=', now()->startOfDay())->count(),
             'open_tickets' => SupportTicket::query()->whereIn('status', ['open', 'in_progress'])->count(),

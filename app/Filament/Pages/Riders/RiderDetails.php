@@ -2,27 +2,19 @@
 
 namespace App\Filament\Pages\Riders;
 
-use App\Models\Document;
+use App\Filament\Pages\Riders\Concerns\ReviewsRiderKyc;
 use App\Models\Rating;
 use App\Models\Transaction;
 use App\Models\Trip;
 use App\Models\User;
 use App\Models\UserDevice;
-use App\Models\VehicleModel;
-use App\Models\VehicleType;
 use App\Services\Auth\UserAccountService;
-use App\Services\Rider\RiderKycService;
 use BezhanSalleh\FilamentShield\Traits\HasPageShield;
 use Filament\Actions\Concerns\InteractsWithActions;
-use Filament\Actions\Contracts\HasActions;
-use Filament\Actions\DeleteAction;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Validation\Rule;
 use Laravel\Sanctum\PersonalAccessToken;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
@@ -33,6 +25,7 @@ class RiderDetails extends Page
 {
     use HasPageShield;
     use InteractsWithActions;
+    use ReviewsRiderKyc;
     use WithPagination;
 
     private const array TRIP_SORT_COLUMNS = ['fare', 'requested_at'];
@@ -50,12 +43,6 @@ class RiderDetails extends Page
 
     #[Url(history: true)]
     public string $tab = 'kyc';
-
-    public ?int $previewingDocumentId = null;
-
-    public ?string $rejecting = null;
-
-    public string $rejectionReason = '';
 
     public string $tripsSearch = '';
 
@@ -78,22 +65,6 @@ class RiderDetails extends Page
     public string $transactionsSort = 'created_at';
 
     public string $transactionsSortDirection = 'desc';
-
-    public bool $editingVehicle = false;
-
-    public ?int $vehicleTypeId = null;
-
-    public ?int $vehicleModelId = null;
-
-    public string $plateNumber = '';
-
-    public string $registrationNumber = '';
-
-    public ?int $year = null;
-
-    public string $color = '';
-
-    public string $insuranceExpiryAt = '';
 
     public function mount(int $record): void
     {
@@ -121,18 +92,6 @@ class RiderDetails extends Page
             ->whereHas('riderProfile')
             ->with(['riderProfile.vehicle.vehicleType', 'riderProfile.vehicle.vehicleModel', 'riderProfile.homeZone', 'riderProfile.approvedBy', 'referredBy'])
             ->findOrFail($this->recordId);
-    }
-
-    /**
-     * @return Collection<int, Document>
-     */
-    #[Computed]
-    public function documents(): Collection
-    {
-        return $this->rider()->riderProfile->documents()
-            ->with('reviewedBy')
-            ->orderByDesc('created_at')
-            ->get();
     }
 
     /**
@@ -243,28 +202,6 @@ class RiderDetails extends Page
         return $this->rider()->tokens()->orderByDesc('last_used_at')->get();
     }
 
-    /**
-     * @return Collection<int, VehicleType>
-     */
-    #[Computed]
-    public function vehicleTypeOptions(): Collection
-    {
-        return VehicleType::query()->orderBy('name')->get();
-    }
-
-    /**
-     * @return Collection<int, VehicleModel>
-     */
-    #[Computed]
-    public function vehicleModelOptions(): Collection
-    {
-        return VehicleModel::query()
-            ->when($this->vehicleTypeId, fn ($query, $vehicleTypeId) => $query->where('vehicle_type_id', $vehicleTypeId))
-            ->orderBy('make')
-            ->orderBy('name')
-            ->get();
-    }
-
     public function setTab(string $tab): void
     {
         $this->tab = $tab;
@@ -337,174 +274,6 @@ class RiderDetails extends Page
         $this->resetPage('transactionsPage');
     }
 
-    public function previewDocument(int $documentId): void
-    {
-        $this->previewingDocumentId = $documentId;
-    }
-
-    public function closePreview(): void
-    {
-        $this->previewingDocumentId = null;
-    }
-
-    public function previewingDocument(): ?Document
-    {
-        if ($this->previewingDocumentId === null) {
-            return null;
-        }
-
-        return $this->documents()->firstWhere('id', $this->previewingDocumentId);
-    }
-
-    public function documentUrl(string $path): string
-    {
-        return Storage::disk('public')->url($path);
-    }
-
-    public function approveDocument(int $documentId, RiderKycService $riderKycService): void
-    {
-        /** @var User $admin */
-        $admin = Auth::user();
-
-        $rider = $this->rider();
-        $document = $this->findDocument($rider, $documentId);
-
-        $riderKycService->approveDocument($document, $rider->riderProfile, $admin);
-
-        Notification::make()->title('Document approved')->success()->send();
-    }
-
-    public function rejectDocument(int $documentId): void
-    {
-        $this->rejecting = "document:{$documentId}";
-        $this->rejectionReason = '';
-    }
-
-    public function deleteDocumentAction(): DeleteAction
-    {
-        return DeleteAction::make('deleteDocument')
-            ->record(fn (array $arguments): Document => $this->findDocument($this->rider(), (int) $arguments['documentId']))
-            ->modalHeading('Delete document')
-            ->successNotificationTitle('Document deleted')
-            ->action(function (Document $record, RiderKycService $riderKycService): void {
-                /** @var User $admin */
-                $admin = Auth::user();
-
-                $rider = $this->rider();
-
-                $riderKycService->deleteDocument($record, $rider->riderProfile, $admin);
-
-                if ($this->previewingDocumentId === $record->id) {
-                    $this->previewingDocumentId = null;
-                }
-            });
-    }
-
-    public function rejectVehicle(): void
-    {
-        $this->rejecting = 'vehicle';
-        $this->rejectionReason = '';
-    }
-
-    public function cancelReject(): void
-    {
-        $this->rejecting = null;
-        $this->rejectionReason = '';
-    }
-
-    public function confirmReject(RiderKycService $riderKycService): void
-    {
-        $this->validate([
-            'rejectionReason' => ['required', 'string', 'max:500'],
-        ]);
-
-        $rider = $this->rider();
-
-        if ($this->rejecting === 'vehicle') {
-            $rider->riderProfile->vehicle?->update([
-                'status' => 'rejected',
-            ]);
-
-            Notification::make()->title('Vehicle rejected')->danger()->send();
-        } elseif (is_string($this->rejecting) && str_starts_with($this->rejecting, 'document:')) {
-            /** @var User $admin */
-            $admin = Auth::user();
-
-            $document = $this->findDocument($rider, (int) str_replace('document:', '', $this->rejecting));
-
-            $riderKycService->rejectDocument($document, $rider->riderProfile, $admin, $this->rejectionReason);
-
-            Notification::make()->title('Document rejected')->danger()->send();
-        }
-
-        $this->rejecting = null;
-        $this->rejectionReason = '';
-    }
-
-    public function approveVehicle(): void
-    {
-        $this->rider()->riderProfile->vehicle?->update(['status' => 'approved']);
-
-        Notification::make()->title('Vehicle approved')->success()->send();
-    }
-
-    public function editVehicle(): void
-    {
-        $vehicle = $this->rider()->riderProfile->vehicle;
-
-        if (! $vehicle) {
-            return;
-        }
-
-        $this->vehicleTypeId = $vehicle->vehicle_type_id;
-        $this->vehicleModelId = $vehicle->vehicle_model_id;
-        $this->plateNumber = $vehicle->plate_number;
-        $this->registrationNumber = (string) $vehicle->registration_number;
-        $this->year = $vehicle->year;
-        $this->color = (string) $vehicle->color;
-        $this->insuranceExpiryAt = $vehicle->insurance_expiry_at?->format('Y-m-d') ?? '';
-        $this->editingVehicle = true;
-    }
-
-    public function cancelEditVehicle(): void
-    {
-        $this->editingVehicle = false;
-        $this->resetErrorBag();
-    }
-
-    public function saveVehicle(): void
-    {
-        $vehicle = $this->rider()->riderProfile->vehicle;
-
-        if (! $vehicle) {
-            return;
-        }
-
-        $data = $this->validate([
-            'vehicleTypeId' => ['required', 'integer', 'exists:vehicle_types,id'],
-            'vehicleModelId' => ['nullable', 'integer', 'exists:vehicle_models,id'],
-            'plateNumber' => ['required', 'string', 'max:255', Rule::unique('vehicles', 'plate_number')->ignore($vehicle->id)],
-            'registrationNumber' => ['nullable', 'string', 'max:255'],
-            'year' => ['nullable', 'integer', 'min:1980', 'max:'.(now()->year + 1)],
-            'color' => ['nullable', 'string', 'max:255'],
-            'insuranceExpiryAt' => ['nullable', 'date'],
-        ]);
-
-        $vehicle->update([
-            'vehicle_type_id' => $data['vehicleTypeId'],
-            'vehicle_model_id' => $data['vehicleModelId'],
-            'plate_number' => $data['plateNumber'],
-            'registration_number' => $data['registrationNumber'] !== '' ? $data['registrationNumber'] : null,
-            'year' => $data['year'],
-            'color' => $data['color'] !== '' ? $data['color'] : null,
-            'insurance_expiry_at' => $data['insuranceExpiryAt'] !== '' ? $data['insuranceExpiryAt'] : null,
-        ]);
-
-        Notification::make()->title('Vehicle updated')->success()->send();
-
-        $this->editingVehicle = false;
-    }
-
     public function revokeDevice(int $deviceId): void
     {
         $this->rider()->devices()->where('id', $deviceId)->delete();
@@ -554,10 +323,5 @@ class RiderDetails extends Page
         $rider->update(['allow_login' => ! $rider->allow_login]);
 
         Notification::make()->title('Login access updated')->success()->send();
-    }
-
-    private function findDocument(User $rider, int $documentId): Document
-    {
-        return $rider->riderProfile->documents()->findOrFail($documentId);
     }
 }

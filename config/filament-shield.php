@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 use App\Filament\Pages\Dashboard;
+use App\Filament\Pages\Kyc\KycReview;
 use App\Filament\Resources\Transactions\TransactionResource;
 use BezhanSalleh\FilamentShield\Resources\Roles\RoleResource;
 use Filament\Widgets\AccountWidget;
@@ -221,6 +222,8 @@ return [
         'prefix' => 'view',
         'exclude' => [
             Dashboard::class,
+            // Access follows KycReviews (View:KycReviews).
+            KycReview::class,
         ],
     ],
 
@@ -262,6 +265,10 @@ return [
         // Gates the Customers resource separately from User Accounts (both use the User model, so they
         // share the User:* resource permissions). Formatted to "View:Customers".
         'view:customers' => 'View Customers',
+        // KYC Reviews + rider details: approve/reject documents and the vehicle ("Review:Kyc"),
+        // and delete a rider's KYC document ("Delete:KycDocument").
+        'review:kyc' => 'Review KYC (approve / reject)',
+        'delete:kyc_document' => 'Delete KYC documents',
     ],
 
     /*
