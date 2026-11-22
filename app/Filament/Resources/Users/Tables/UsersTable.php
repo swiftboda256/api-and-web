@@ -24,7 +24,7 @@ use Illuminate\Database\Eloquent\Collection;
 
 class UsersTable
 {
-    public static function configure(Table $table): Table
+    public static function configure(Table $table, bool $customersOnly = false): Table
     {
         return $table
             ->columns([
@@ -44,9 +44,11 @@ class UsersTable
                 TextColumn::make('roles.name')
                     ->badge()
                     ->separator(',')
-                    ->searchable(),
+                    ->searchable()
+                    ->hidden($customersOnly),
                 TextColumn::make('login_type')
-                    ->searchable(),
+                    ->searchable()
+                    ->hidden($customersOnly),
                 IconColumn::make('allow_login')
                     ->boolean(),
                 TextColumn::make('status')
@@ -85,7 +87,8 @@ class UsersTable
             ->filters([
                 SelectFilter::make('roles')
                     ->relationship('roles', 'name')
-                    ->multiple(),
+                    ->multiple()
+                    ->hidden($customersOnly),
                 SelectFilter::make('status')
                     ->options([
                         'active' => 'Active',

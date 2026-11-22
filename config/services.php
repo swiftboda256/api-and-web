@@ -45,6 +45,9 @@ return [
 
     'google' => [
         'routes_api_key' => env('GOOGLE_ROUTES_API_KEY'),
+        // Browser key (exposed in admin HTML) -- restrict by HTTP referrer to the admin domains.
+        'maps_js_api_key' => env('GOOGLE_MAPS_JS_API_KEY'),
+        'maps_map_id' => env('GOOGLE_MAPS_MAP_ID'),
     ],
 
     'yo' => [
