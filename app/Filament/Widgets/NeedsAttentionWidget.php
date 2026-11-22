@@ -4,7 +4,6 @@ namespace App\Filament\Widgets;
 
 use App\Filament\Pages\Kyc\KycReviews;
 use App\Filament\Resources\Transactions\TransactionResource;
-use App\Filament\Resources\WaitlistEntries\WaitlistEntryResource;
 use App\Services\Dashboard\DashboardMetricsService;
 use BezhanSalleh\FilamentShield\Traits\HasWidgetShield;
 use Filament\Support\Icons\Heroicon;
@@ -88,18 +87,11 @@ class NeedsAttentionWidget extends Widget
                 'tone' => 'warning',
                 'url' => null,
             ],
-            [
-                'label' => 'Waitlist sign-ups',
-                'count' => $counts['waitlist'],
-                'icon' => Heroicon::OutlinedQueueList,
-                'tone' => 'info',
-                'url' => WaitlistEntryResource::canViewAny() ? WaitlistEntryResource::getUrl() : null,
-            ],
         ];
 
         return [
             'items' => $items,
-            'allClear' => collect($items)->where('tone', '!=', 'info')->sum('count') === 0,
+            'allClear' => collect($items)->sum('count') === 0,
         ];
     }
 }

@@ -52,7 +52,7 @@
                         <li><strong>Payment and wallet information:</strong> wallet balance, transaction records, mobile-money number, payment method, gateway and network references, and withdrawal details. We do not store payment-card numbers in this application.</li>
                         <li><strong>Device and technical information:</strong> device identifier and type, app version, active-device status, and push-notification token.</li>
                         <li><strong>Support and safety information:</strong> support tickets, messages, attachments, ratings, cancellation reasons, saved places, and emergency-contact details.</li>
-                        <li><strong>Website information:</strong> waitlist name, email address, and optional phone number, together with essential session and security data needed to operate the website.</li>
+                        <li><strong>Website information:</strong> essential session and security data needed to operate the website.</li>
                     </ul>
                 </section>
 

@@ -11,7 +11,6 @@ use App\Models\Trip;
 use App\Models\TripFareBreakdown;
 use App\Models\User;
 use App\Models\UserDeleteRequest;
-use App\Models\WaitlistEntry;
 use App\Models\WithdrawalRequest;
 use App\Services\Rider\KycQueue;
 use Carbon\CarbonImmutable;
@@ -139,7 +138,6 @@ class DashboardMetricsService
             'open_tickets' => SupportTicket::query()->whereIn('status', ['open', 'in_progress'])->count(),
             'urgent_tickets' => SupportTicket::query()->whereIn('status', ['open', 'in_progress'])->whereIn('priority', ['high', 'urgent'])->count(),
             'delete_requests' => UserDeleteRequest::query()->whereIn('status', ['pending', 'processing'])->count(),
-            'waitlist' => WaitlistEntry::query()->count(),
         ]);
     }
 
