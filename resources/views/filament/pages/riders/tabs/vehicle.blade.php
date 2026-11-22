@@ -1,5 +1,6 @@
 @php
     $vehicle = $rider->riderProfile->vehicle;
+    $canReview = $this->canReviewKyc();
 @endphp
 
 @if (! $vehicle)
@@ -33,8 +34,12 @@
                     <td class="py-2 pr-4 text-gray-500 dark:text-gray-400">{{ $vehicle->insurance_expiry_at?->format('d M Y') ?? '—' }}</td>
                     <td class="py-2 pr-4">
                         @include('filament.pages.riders.partials.status-badge', ['status' => $vehicle->status])
+                        @if ($vehicle->status === 'rejected' && $vehicle->rejection_reason)
+                            <p class="mt-1 max-w-xs text-xs text-rose-600 dark:text-rose-400">{{ $vehicle->rejection_reason }}</p>
+                        @endif
                     </td>
                     <td class="py-2 pr-4">
+                        @if ($canReview)
                         <div
                             x-data="{
                                 open: false,
@@ -104,9 +109,32 @@
                                 </div>
                             </template>
                         </div>
+                        @else
+                            <span class="text-xs text-gray-400">—</span>
+                        @endif
                     </td>
                 </tr>
             </tbody>
         </table>
+    </div>
+
+    @php($images = $vehicle->images()->get())
+    <div class="mt-6">
+        <h3 class="text-sm font-medium text-gray-950 dark:text-white">Vehicle photos</h3>
+        @if ($images->isEmpty())
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">No photos uploaded.</p>
+        @else
+            <div class="mt-3 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                @foreach ($images as $image)
+                    <div wire:key="vehicle-image-{{ $image->id }}">
+                        @include('filament.partials.image-viewer', [
+                            'src' => $this->documentUrl($image->file_path),
+                            'alt' => 'Vehicle photo',
+                            'heightClass' => 'h-56',
+                        ])
+                    </div>
+                @endforeach
+            </div>
+        @endif
     </div>
 @endif

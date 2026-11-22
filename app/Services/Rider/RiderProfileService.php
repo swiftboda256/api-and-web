@@ -142,6 +142,7 @@ readonly class RiderProfileService
         } else {
             $vehicle->fill($data);
             $vehicle->status = 'pending';
+            $vehicle->rejection_reason = null;
             $vehicle->save();
         }
 

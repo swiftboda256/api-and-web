@@ -34,6 +34,7 @@ class VehicleResource extends JsonResource
             'registration_number' => $this->registration_number,
             'insurance_expiry_at' => $this->insurance_expiry_at,
             'status' => $this->status,
+            'rejection_reason' => $this->rejection_reason,
             'images' => VehicleImageResource::collection($this->whenLoaded('images')),
         ];
     }

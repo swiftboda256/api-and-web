@@ -2,12 +2,18 @@
 
 namespace App\Models;
 
+use Carbon\CarbonImmutable;
 use Database\Factories\VehicleFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 
+/**
+ * @property CarbonImmutable|null $insurance_expiry_at
+ * @property 'pending'|'approved'|'rejected'|'inactive' $status
+ * @property string|null $rejection_reason
+ */
 class Vehicle extends BaseModel
 {
     /** @use HasFactory<VehicleFactory> */
@@ -23,6 +29,7 @@ class Vehicle extends BaseModel
         'registration_number',
         'insurance_expiry_at',
         'status',
+        'rejection_reason',
     ];
 
     protected function casts(): array

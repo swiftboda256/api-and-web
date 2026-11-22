@@ -5,6 +5,7 @@ namespace App\Services\Rider;
 use App\Models\Document;
 use App\Models\RiderProfile;
 use App\Models\User;
+use App\Models\Vehicle;
 use App\Services\Push\FcmGateway;
 use App\Services\Push\PushMessage;
 use Illuminate\Support\Facades\DB;
@@ -12,7 +13,7 @@ use Illuminate\Support\Str;
 
 readonly class RiderKycService
 {
-    private const array REQUIRED_DOCUMENT_TYPES = ['national_id', 'driving_license'];
+    public const array REQUIRED_DOCUMENT_TYPES = ['national_id', 'driving_license'];
 
     public function __construct(
         private FcmGateway $push,
@@ -69,6 +70,42 @@ readonly class RiderKycService
 
             $this->recomputeKycStatus($riderProfile, $reviewer);
         });
+    }
+
+    /**
+     * The vehicle is reviewed separately from the documents: it doesn't feed into kyc_status,
+     * but a rider can only go online / post rides with an approved vehicle.
+     */
+    public function approveVehicle(Vehicle $vehicle): Vehicle
+    {
+        $vehicle->update([
+            'status' => 'approved',
+            'rejection_reason' => null,
+        ]);
+
+        return $vehicle->refresh();
+    }
+
+    public function rejectVehicle(Vehicle $vehicle, string $reason): Vehicle
+    {
+        $vehicle->update([
+            'status' => 'rejected',
+            'rejection_reason' => $reason,
+        ]);
+
+        $rider = $vehicle->riderProfile?->user;
+
+        if ($rider) {
+            $this->push->sendToUser($rider, new PushMessage(
+                type: 'vehicle_rejected',
+                id: $vehicle->id,
+                title: 'Vehicle rejected',
+                body: "Your vehicle {$vehicle->plate_number} was rejected: {$reason}",
+                data: ['vehicle_id' => $vehicle->id],
+            ));
+        }
+
+        return $vehicle->refresh();
     }
 
     /**

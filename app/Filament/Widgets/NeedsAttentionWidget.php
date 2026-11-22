@@ -2,16 +2,15 @@
 
 namespace App\Filament\Widgets;
 
-use App\Filament\Pages\Riders\RidersIndex;
+use App\Filament\Pages\Kyc\KycReviews;
 use App\Filament\Resources\Transactions\TransactionResource;
-use App\Filament\Resources\WaitlistEntries\WaitlistEntryResource;
 use App\Services\Dashboard\DashboardMetricsService;
 use BezhanSalleh\FilamentShield\Traits\HasWidgetShield;
 use Filament\Support\Icons\Heroicon;
 use Filament\Widgets\Widget;
 
 /**
- * Work queues for admins. Items link to a filtered list where an admin page exists; withdrawals,
+ * Work queues for admins. Items link to a filtered list where an admin page exists;
  * support tickets and delete requests have no admin page yet, so they're counts only.
  */
 class NeedsAttentionWidget extends Widget
@@ -29,7 +28,6 @@ class NeedsAttentionWidget extends Widget
     {
         $counts = app(DashboardMetricsService::class)->attention();
 
-        $riders = RidersIndex::canAccess();
         $transactions = TransactionResource::canViewAny();
 
         $items = [
@@ -38,21 +36,24 @@ class NeedsAttentionWidget extends Widget
                 'count' => $counts['kyc_review'],
                 'icon' => Heroicon::OutlinedIdentification,
                 'tone' => 'warning',
-                'url' => $riders ? RidersIndex::getUrl(['filters' => ['kyc_status' => ['values' => ['pending', 'under_review']]]]) : null,
+                'url' => KycReviews::canAccess() ? KycReviews::getUrl(['tab' => 'awaiting']) : null,
             ],
             [
                 'label' => 'Documents awaiting approval',
                 'count' => $counts['documents'],
                 'icon' => Heroicon::OutlinedDocumentCheck,
                 'tone' => 'warning',
-                'url' => null,
+                'url' => KycReviews::canAccess() ? KycReviews::getUrl(['tab' => 'awaiting']) : null,
             ],
             [
-                'label' => 'Withdrawals processing',
-                'count' => $counts['withdrawals'],
+                'label' => 'Withdrawals stuck over 10 min',
+                'count' => $counts['stuck_withdrawals'],
                 'icon' => Heroicon::OutlinedArrowUpTray,
-                'tone' => 'warning',
-                'url' => null,
+                'tone' => 'danger',
+                'url' => $transactions ? TransactionResource::getUrl('index', ['filters' => [
+                    'status' => ['value' => 'pending'],
+                    'transaction_type' => ['values' => ['withdrawal']],
+                ]]) : null,
             ],
             [
                 'label' => 'Transactions pending over 10 min',
@@ -86,18 +87,11 @@ class NeedsAttentionWidget extends Widget
                 'tone' => 'warning',
                 'url' => null,
             ],
-            [
-                'label' => 'Waitlist sign-ups',
-                'count' => $counts['waitlist'],
-                'icon' => Heroicon::OutlinedQueueList,
-                'tone' => 'info',
-                'url' => WaitlistEntryResource::canViewAny() ? WaitlistEntryResource::getUrl() : null,
-            ],
         ];
 
         return [
             'items' => $items,
-            'allClear' => collect($items)->where('tone', '!=', 'info')->sum('count') === 0,
+            'allClear' => collect($items)->sum('count') === 0,
         ];
     }
 }

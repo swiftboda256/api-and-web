@@ -6,7 +6,7 @@
     <div class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
         <div class="fixed inset-0 bg-gray-950/70" wire:click="closePreview"></div>
 
-        <div class="relative flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white shadow-xl dark:bg-gray-900">
+        <div class="relative flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-white shadow-xl dark:bg-gray-900">
             <div class="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-white/10">
                 <h3 class="text-sm font-medium text-gray-950 dark:text-white">
                     {{ str($document->document_type)->headline() }}
@@ -22,7 +22,11 @@
                 @if ($extension === 'pdf')
                     <iframe src="{{ $this->documentUrl($document->file_path) }}" class="h-[70vh] w-full rounded-lg bg-white"></iframe>
                 @else
-                    <img src="{{ $this->documentUrl($document->file_path) }}" alt="{{ str($document->document_type)->headline() }}" class="mx-auto max-h-[70vh] rounded-lg" />
+                    @include('filament.partials.image-viewer', [
+                        'src' => $this->documentUrl($document->file_path),
+                        'alt' => str($document->document_type)->headline(),
+                        'heightClass' => 'h-[70vh]',
+                    ])
                 @endif
             </div>
         </div>

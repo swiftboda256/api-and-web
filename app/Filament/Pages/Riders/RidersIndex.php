@@ -130,7 +130,7 @@ class RidersIndex extends Page implements HasTable
             ->defaultSort('created_at', 'desc');
     }
 
-    private static function initialsAvatarUrl(User $record): string
+    public static function initialsAvatarUrl(User $record): string
     {
         $initials = $record->initials() !== '' ? $record->initials() : '?';
 
