@@ -17,6 +17,7 @@ use Filament\Facades\Filament;
 use Filament\Pages\Page;
 use Filament\Resources\Resource;
 use Filament\Widgets\Widget;
+use Livewire\Attributes\Locked;
 
 /**
  * Greeting + quick links to the main admin sections. A link only shows when the admin can open it.
@@ -30,6 +31,10 @@ class WelcomeWidget extends Widget
     protected int|string|array $columnSpan = 'full';
 
     protected string $view = 'filament.widgets.welcome-widget';
+
+    /** Set by the Dashboard for admins with no widget permissions: greeting and date only. */
+    #[Locked]
+    public bool $greetingOnly = false;
 
     /**
      * @return array<string, mixed>
@@ -52,7 +57,7 @@ class WelcomeWidget extends Widget
             ConfigurationResource::class,
         ];
 
-        $links = collect($destinations)
+        $links = $this->greetingOnly ? [] : collect($destinations)
             ->filter(fn (string $class): bool => is_subclass_of($class, Resource::class) ? $class::canViewAny() : $class::canAccess())
             ->map(fn (string $class): array => [
                 'label' => $class::getNavigationLabel(),
@@ -71,6 +76,7 @@ class WelcomeWidget extends Widget
             'name' => Filament::auth()->user()?->first_name,
             'date' => now()->format('l, j F Y'),
             'links' => $links,
+            'greetingOnly' => $this->greetingOnly,
         ];
     }
 }

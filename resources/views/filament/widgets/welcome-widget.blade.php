@@ -9,7 +9,9 @@
                 <h2 class="mt-1 text-2xl font-semibold tracking-tight">
                     {{ $greeting }}{{ $name ? ', '.$name : '' }}
                 </h2>
-                <p class="mt-1 text-sm text-amber-50/90">Here's what's happening across Swift Boda right now.</p>
+                @unless ($greetingOnly)
+                    <p class="mt-1 text-sm text-amber-50/90">Here's what's happening across Swift Boda right now.</p>
+                @endunless
             </div>
 
             @if (count($links))

@@ -150,3 +150,32 @@ test('live counts riders and flags trips waiting over 5 minutes', function () {
         'searching_overdue' => 1,
     ]);
 });
+
+test('an admin with no widget permissions sees only the greeting banner', function () {
+    $this->seed(PermissionSeeder::class);
+    $admin = User::factory()->create(['first_name' => 'Amina']);
+    $admin->assignRole('admin');
+
+    $this->actingAs($admin)
+        ->get('/admin')
+        ->assertOk()
+        ->assertSee('Amina')
+        ->assertDontSee("Here's what's happening", escape: false)
+        ->assertDontSee('Live now');
+
+    // Even with access to a page, greeting-only mode shows no quick links.
+    Role::findByName('admin')->givePermissionTo('ViewAny:Trip');
+    Livewire::test(WelcomeWidget::class, ['greetingOnly' => true])
+        ->assertViewHas('links', []);
+});
+
+test('the full dashboard shows once the admin can see a widget', function () {
+    $this->seed(PermissionSeeder::class);
+    Role::findByName('admin')->givePermissionTo(['View:WelcomeWidget', 'ViewAny:Trip']);
+
+    $this->actingAs(User::factory()->create()->assignRole('admin'));
+
+    Livewire::test(WelcomeWidget::class)
+        ->assertSee("Here's what's happening", escape: false)
+        ->assertViewHas('links', fn (array $links): bool => count($links) === 1);
+});
