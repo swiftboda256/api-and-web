@@ -66,7 +66,9 @@ class TripsTable
                         'in_progress' => 'In progress',
                         'completed' => 'Completed',
                         'cancelled' => 'Cancelled',
-                    ]),
+                    ])
+                    // Multiple so dashboard links can open e.g. all active statuses at once.
+                    ->multiple(),
                 SelectFilter::make('type')
                     ->options([
                         'ride' => 'Ride',

@@ -16,6 +16,7 @@ use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Livewire\Attributes\Url;
 use UnitEnum;
 
 class RidersIndex extends Page implements HasTable
@@ -36,6 +37,11 @@ class RidersIndex extends Page implements HasTable
     protected static ?string $navigationLabel = 'Riders';
 
     protected static ?string $title = 'Riders';
+
+    /** Filters in the URL (like resource list pages), so links such as the dashboard's can pre-filter. */
+    /** @var array<string, mixed>|null */
+    #[Url(as: 'filters')]
+    public ?array $tableFilters = null;
 
     public function table(Table $table): Table
     {
@@ -86,6 +92,21 @@ class RidersIndex extends Page implements HasTable
                     ->description(fn (User $record): ?string => $record->riderProfile?->vehicle?->plate_number),
             ])
             ->filters([
+                SelectFilter::make('kyc_status')
+                    ->label('KYC status')
+                    ->multiple()
+                    ->options([
+                        'pending' => 'Pending',
+                        'under_review' => 'Under review',
+                        'approved' => 'Approved',
+                        'rejected' => 'Rejected',
+                    ])
+                    ->query(fn (Builder $query, array $data): Builder => $query->when(
+                        $data['values'] ?? null,
+                        fn (Builder $query, array $values) => $query->whereHas(
+                            'riderProfile', fn (Builder $query) => $query->whereIn('kyc_status', $values)
+                        ),
+                    )),
                 SelectFilter::make('vehicle_type_id')
                     ->label('Vehicle type')
                     ->options(fn (): array => VehicleType::query()->orderBy('name')->pluck('name', 'id')->all())
