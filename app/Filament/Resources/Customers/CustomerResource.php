@@ -8,6 +8,7 @@ use App\Filament\Resources\Users\Schemas\UserForm;
 use App\Filament\Resources\Users\Tables\UsersTable;
 use App\Models\User;
 use BackedEnum;
+use Filament\Facades\Filament;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
@@ -42,6 +43,11 @@ class CustomerResource extends Resource
     public static function table(Table $table): Table
     {
         return UsersTable::configure($table, customersOnly: true);
+    }
+
+    public static function canViewAny(): bool
+    {
+        return Filament::auth()->user()?->can('View:Customers') ?? false;
     }
 
     public static function getEloquentQuery(): Builder

@@ -258,7 +258,11 @@ return [
     |
     */
 
-    'custom_permissions' => [],
+    'custom_permissions' => [
+        // Gates the Customers resource separately from User Accounts (both use the User model, so they
+        // share the User:* resource permissions). Formatted to "View:Customers".
+        'view:customers' => 'View Customers',
+    ],
 
     /*
     |--------------------------------------------------------------------------
