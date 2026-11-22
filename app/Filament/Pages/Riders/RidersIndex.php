@@ -29,7 +29,9 @@ class RidersIndex extends Page implements HasTable
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedTruck;
 
-    protected static string|UnitEnum|null $navigationGroup = 'Riders';
+    protected static string|UnitEnum|null $navigationGroup = 'Users';
+
+    protected static ?int $navigationSort = 1;
 
     protected static ?string $navigationLabel = 'Riders';
 
