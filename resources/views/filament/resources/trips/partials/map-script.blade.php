@@ -119,7 +119,7 @@
                         zIndex: 500 + index,
                     });
 
-                    marker.addListener('click', () => {
+                    marker.addEventListener('gmp-click', () => {
                         const content = document.createElement('div');
                         const title = document.createElement('strong');
                         title.textContent = heading;
