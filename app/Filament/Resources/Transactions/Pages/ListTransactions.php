@@ -18,7 +18,8 @@ class ListTransactions extends ListRecords
     protected function getHeaderWidgets(): array
     {
         return [
-            TransactionStatsOverview::class,
+            // TODO: Delete test transactions before uncommenting.
+//            TransactionStatsOverview::class,
         ];
     }
 }
