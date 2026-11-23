@@ -13,8 +13,32 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Schedule::command(DispatchScheduledTrips::class)->everyMinute()->withoutOverlapping();
-Schedule::command(ResolvePendingTransactions::class)->everyTwoSeconds()->withoutOverlapping();
-Schedule::command(ExpireRideShareJoinRequests::class)->everyFiveSeconds()->withoutOverlapping();
-Schedule::command(ExpirePostedRideRequests::class)->everyMinute()->withoutOverlapping();
-Schedule::command(ProcessTripDispatch::class)->everyTenSeconds()->withoutOverlapping();
+// Without this the sub-minute loop queries the cache about 40 times a second for pause and
+// interrupt signals. schedule:pause and schedule:interrupt have no effect as a result.
+Schedule::withoutInterruptionPolling();
+
+// Overlap locks expire after five minutes so one left behind by a killed process
+// can't block its command for the default 24 hours.
+Schedule::command(DispatchScheduledTrips::class)->everyMinute()->withoutOverlapping(5);
+
+// Runs inside the scheduler process: a Schedule::command() would boot a fresh
+// PHP process every two seconds. The lock expires after a minute so a killed
+// scheduler can't block polling for the default 24 hours.
+Schedule::call(fn () => Artisan::call(ResolvePendingTransactions::class))
+    ->name('transactions:resolve-pending')
+    ->everyTwoSeconds()
+    ->withoutOverlapping(1);
+
+// Also runs inside the scheduler process, to avoid a fresh boot every five seconds.
+Schedule::call(fn () => Artisan::call(ExpireRideShareJoinRequests::class))
+    ->name('ride-share:expire-join-requests')
+    ->everyFiveSeconds()
+    ->withoutOverlapping(5);
+
+Schedule::command(ExpirePostedRideRequests::class)->everyMinute()->withoutOverlapping(5);
+
+// In-process like the other sub-minute commands; its pushes are queued, so it stays short.
+Schedule::call(fn () => Artisan::call(ProcessTripDispatch::class))
+    ->name('trips:process-dispatch')
+    ->everyTenSeconds()
+    ->withoutOverlapping(5);

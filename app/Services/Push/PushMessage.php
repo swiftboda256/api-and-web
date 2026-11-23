@@ -24,6 +24,8 @@ use Kreait\Firebase\Messaging\CloudMessage;
  * list (see PushEventNotification). It's ignored -- never persisted -- when $silent, since
  * there's no title/body to show. Set it false for high-frequency or purely real-time pushes
  * that shouldn't pile up as history (e.g. a ride offer re-sent every dispatch round).
+ *
+ * $tripOfferId ties the push to a job offer: it's dropped if the offer closes before it's sent.
  */
 final readonly class PushMessage
 {
@@ -45,6 +47,7 @@ final readonly class PushMessage
         public ?int $badge = null,
         public bool $contentAvailable = false,
         public bool $persist = true,
+        public ?int $tripOfferId = null,
     ) {}
 
     /**
@@ -69,6 +72,7 @@ final readonly class PushMessage
             badge: $badge,
             contentAvailable: $this->contentAvailable,
             persist: $this->persist,
+            tripOfferId: $this->tripOfferId,
         );
     }
 
@@ -94,6 +98,7 @@ final readonly class PushMessage
             badge: $this->badge,
             contentAvailable: $this->contentAvailable,
             persist: $this->persist,
+            tripOfferId: $this->tripOfferId,
         );
     }
 

@@ -340,3 +340,26 @@ test('only a pending passenger on the driver\'s own trip can be accepted or decl
     $this->patchJson("/api/v1/rider-app/rides/{$this->ongoing->id}/passengers/{$passenger->id}/accept")->assertOk();
     $this->patchJson("/api/v1/rider-app/rides/{$this->ongoing->id}/passengers/{$passenger->id}/decline")->assertUnprocessable();
 });
+
+test('a released passenger whose re-offer failed is retried after a minute', function () {
+    $passenger = orderRideShare($this);
+    app(RideShareMatchingService::class)->release($passenger);
+
+    $this->artisan('ride-share:expire-join-requests');
+    expect($passenger->fresh()->status)->toBe('pending_approval');
+
+    // Still failing: no pricing rule. It waits another minute before the next attempt.
+    PricingRule::query()->update(['is_active' => false]);
+    $this->travel(61)->seconds();
+    $this->artisan('ride-share:expire-join-requests');
+    expect($passenger->fresh()->status)->toBe('pending_approval');
+
+    PricingRule::query()->update(['is_active' => true]);
+    $this->artisan('ride-share:expire-join-requests');
+    expect($passenger->fresh()->status)->toBe('pending_approval');
+
+    $this->travel(61)->seconds();
+    $this->artisan('ride-share:expire-join-requests');
+    expect($passenger->fresh()->status)->toBe('requested')
+        ->and($passenger->fresh()->trip_id)->not->toBe($this->ongoing->id);
+});

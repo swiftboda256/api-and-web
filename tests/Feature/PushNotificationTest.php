@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\SendPushJob;
 use App\Models\Document;
 use App\Models\PricingRule;
 use App\Models\RiderProfile;
@@ -21,6 +22,7 @@ use App\Services\Trip\NearDestinationService;
 use Clickbar\Magellan\Data\Geometries\LineString;
 use Clickbar\Magellan\Data\Geometries\Point;
 use Clickbar\Magellan\Data\Geometries\Polygon;
+use Illuminate\Support\Facades\Queue;
 use Kreait\Firebase\Contract\Messaging;
 use Kreait\Firebase\Exception\Messaging\NotFound;
 use Kreait\Firebase\Messaging\CloudMessage;
@@ -155,7 +157,7 @@ test('the gateway sends only to the user\'s active device', function () {
     UserDevice::query()->create(['user_id' => $user->id, 'device_type' => 'android', 'device_id' => 'old', 'fcm_token' => 'old-token', 'active' => false]);
     UserDevice::query()->create(['user_id' => $user->id, 'device_type' => 'android', 'device_id' => 'new', 'fcm_token' => 'active-token', 'active' => true, 'last_seen_at' => now()]);
 
-    (new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($user, new PushMessage(type: 'trip_started', id: 1, title: 'T', body: 'B'));
+    app()->instance(FcmGateway::class, new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($user, new PushMessage(type: 'trip_started', id: 1, title: 'T', body: 'B'));
 });
 
 test('booking rings every nearby rider with a timed job offer', function () {
@@ -363,7 +365,7 @@ test('sending a push also writes it to the user\'s database notifications', func
     $user = User::factory()->create();
     UserDevice::query()->create(['user_id' => $user->id, 'device_type' => 'android', 'device_id' => 'd', 'fcm_token' => 'token', 'active' => true]);
 
-    (new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($user, new PushMessage(
+    app()->instance(FcmGateway::class, new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($user, new PushMessage(
         type: 'trip_completed',
         id: 42,
         title: 'You have arrived',
@@ -386,7 +388,7 @@ test('a silent push is not written to the database', function () {
     $user = User::factory()->create();
     UserDevice::query()->create(['user_id' => $user->id, 'device_type' => 'android', 'device_id' => 'd', 'fcm_token' => 'token', 'active' => true]);
 
-    (new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($user, new PushMessage(type: 'ride_offer_cancelled', id: 9, silent: true));
+    app()->instance(FcmGateway::class, new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($user, new PushMessage(type: 'ride_offer_cancelled', id: 9, silent: true));
 
     expect($user->notifications()->count())->toBe(0);
 });
@@ -398,7 +400,7 @@ test('a push opted out of persistence is not written to the database', function 
     $user = User::factory()->create();
     UserDevice::query()->create(['user_id' => $user->id, 'device_type' => 'android', 'device_id' => 'd', 'fcm_token' => 'token', 'active' => true]);
 
-    (new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($user, new PushMessage(type: 'ride_offer', id: 9, title: 'New job', body: 'Nearby', persist: false));
+    app()->instance(FcmGateway::class, new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($user, new PushMessage(type: 'ride_offer', id: 9, title: 'New job', body: 'Nearby', persist: false));
 
     expect($user->notifications()->count())->toBe(0);
 });
@@ -419,6 +421,7 @@ test('a push with no badge of its own gets the recipient\'s unread notification 
 
     // Each push is counted in the badge it carries itself -- the count reflects state
     // right after that push's own row was persisted.
+    app()->instance(FcmGateway::class, $spy);
     $spy->sendToUser($user, new PushMessage(type: 'trip_started', id: 1, title: 'T', body: 'B'));
     $spy->sendToUser($user, new PushMessage(type: 'trip_completed', id: 2, title: 'T2', body: 'B2'));
 
@@ -440,6 +443,7 @@ test('a ride offer keeps its own badge instead of the unread notification count'
         }
     };
 
+    app()->instance(FcmGateway::class, $spy);
     $spy->sendToUser($user, new PushMessage(type: 'ride_offer', id: 1, title: 'T', body: 'B', badge: 7, persist: false));
 
     expect($spy->captured[0]->badge)->toBe(7);
@@ -454,7 +458,7 @@ test('a token the provider reports as unregistered is deactivated', function () 
         SendReport::failure(MessageTarget::with('token', 'dead-token'), NotFound::becauseTokenNotFound('dead-token')),
     ]));
 
-    (new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($user, new PushMessage(type: 'trip_started', id: 1, title: 'T', body: 'B'));
+    app()->instance(FcmGateway::class, new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($user, new PushMessage(type: 'trip_started', id: 1, title: 'T', body: 'B'));
 
     expect($device->refresh()->active)->toBeFalse();
 });
@@ -600,4 +604,32 @@ test('top-ups and withdrawals are not pushed yet', function () {
     }
 
     expect($this->push->sent)->toBe([]);
+});
+
+test('a push is queued on the configured queue and written to the in-app list straight away', function () {
+    Queue::fake();
+    config(['queue.push_queue' => 'push']);
+    $user = User::factory()->create();
+    $messaging = Mockery::mock(Messaging::class);
+    $messaging->shouldNotReceive('sendMulticast');
+
+    (new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($user, new PushMessage(type: 'trip_started', id: 1, title: 'T', body: 'B'));
+
+    Queue::assertPushedOn('push', SendPushJob::class, fn (SendPushJob $job): bool => $job->userId === $user->id);
+    expect($user->notifications()->count())->toBe(1);
+});
+
+test('a queued push is dropped once its ring window or job offer is over', function () {
+    $rider = onlineRider($this);
+    bookRide($this);
+    $offer = TripOffer::query()->where('rider_id', $rider->id)->sole();
+    $push = Mockery::mock(FcmGateway::class);
+    $push->shouldReceive('deliver')->once();
+    $live = new PushMessage(type: 'ride_offer', id: 1, expiresAt: now()->addMinute(), tripOfferId: $offer->id);
+
+    (new SendPushJob($rider->id, $live))->handle($push);
+    (new SendPushJob($rider->id, new PushMessage(type: 'ride_offer', id: 1, expiresAt: now()->subSecond())))->handle($push);
+
+    $offer->update(['status' => 'withdrawn']);
+    (new SendPushJob($rider->id, $live))->handle($push);
 });

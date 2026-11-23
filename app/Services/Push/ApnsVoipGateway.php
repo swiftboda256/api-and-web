@@ -46,7 +46,8 @@ class ApnsVoipGateway
         $host = config("apns.hosts.{$environment}");
 
         try {
-            $response = Http::withOptions(['version' => 2.0])
+            $response = Http::timeout(5)
+                ->withOptions(['version' => 2.0])
                 ->withHeaders([
                     'apns-topic' => "{$bundleId}.voip",
                     'apns-push-type' => 'voip',

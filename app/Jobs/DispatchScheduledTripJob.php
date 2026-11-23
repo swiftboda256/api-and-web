@@ -22,10 +22,12 @@ class DispatchScheduledTripJob implements ShouldQueue
 
     public function handle(TripService $tripService): void
     {
+        // search_started_at is set with the claim, so if starting the search fails (or the
+        // worker dies) ProcessTripDispatch still picks the trip up.
         $claimed = Trip::query()
             ->where('id', $this->tripId)
             ->where('status', 'requested')
-            ->update(['status' => 'searching']);
+            ->update(['status' => 'searching', 'search_started_at' => now()]);
 
         if ($claimed === 0) {
             return;

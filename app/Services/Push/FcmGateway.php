@@ -2,6 +2,7 @@
 
 namespace App\Services\Push;
 
+use App\Jobs\SendPushJob;
 use App\Models\User;
 use App\Models\UserDevice;
 use App\Notifications\PushEventNotification;
@@ -24,8 +25,8 @@ class FcmGateway
     ) {}
 
     /**
-     * Sends to the user's active device. A user has at most one: logging in on another
-     * device deactivates the others.
+     * Adds the push to the user's in-app list and queues its delivery, once any open
+     * transaction commits.
      */
     public function sendToUser(?User $user, PushMessage $message): void
     {
@@ -37,6 +38,17 @@ class FcmGateway
             $user->notify(new PushEventNotification($message));
         }
 
+        SendPushJob::dispatch($user->id, $message)
+            ->onQueue(config('queue.push_queue'))
+            ->afterCommit();
+    }
+
+    /**
+     * Sends to the user's active device now (called by SendPushJob). A user has at most
+     * one: logging in on another device deactivates the others.
+     */
+    public function deliver(User $user, PushMessage $message): void
+    {
         // Most pushes don't set their own badge -- default it to the recipient's unread
         // count (now including anything just persisted above). A silent push has no alert
         // to badge, and some pushes (e.g. a ride offer) carry a more specific count already.

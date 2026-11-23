@@ -126,4 +126,11 @@ return [
         'table' => 'failed_jobs',
     ],
 
+    /*
+    | Queue pushes are delivered on. Null is the connection's own default queue; only
+    | name another once a worker processes it (queue:work --queue=push,default).
+    */
+
+    'push_queue' => env('PUSH_QUEUE'),
+
 ];
