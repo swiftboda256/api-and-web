@@ -98,7 +98,7 @@ readonly class TripDispatchService
         $expiresAt = now()->addSeconds((int) Configuration::get('dispatch_offer_window_seconds', 30));
 
         foreach ($riders as $riderProfile) {
-            TripOffer::query()->create([
+            $offer = TripOffer::query()->create([
                 'trip_id' => $trip->id,
                 'rider_id' => $riderProfile->user_id,
                 'status' => 'pending',
@@ -106,7 +106,7 @@ readonly class TripDispatchService
                 'expires_at' => $expiresAt,
             ]);
 
-            $this->push->sendToUser($riderProfile->user, $this->offerMessage($trip, $booking, $pickupStop->location, $pickupStop->address, $riderProfile, $expiresAt));
+            $this->push->sendToUser($riderProfile->user, $this->offerMessage($offer, $trip, $booking, $pickupStop->location, $pickupStop->address, $riderProfile, $expiresAt));
         }
 
         return $riders->count();
@@ -222,7 +222,7 @@ readonly class TripDispatchService
             ->where(ST::distanceSphere('current_location', $pickup), '<=', $radiusMeters);
     }
 
-    private function offerMessage(Trip $trip, TripPassenger|DeliveryDetails $booking, Point $pickup, ?string $pickupAddress, RiderProfile $riderProfile, CarbonInterface $expiresAt): PushMessage
+    private function offerMessage(TripOffer $offer, Trip $trip, TripPassenger|DeliveryDetails $booking, Point $pickup, ?string $pickupAddress, RiderProfile $riderProfile, CarbonInterface $expiresAt): PushMessage
     {
         $dropoffAddress = $booking->stops->firstWhere('stop_type', 'dropoff')?->address;
         $fare = $booking instanceof DeliveryDetails ? $booking->estimated_fare : $booking->fareBreakdown?->estimated_fare;
@@ -265,6 +265,7 @@ readonly class TripDispatchService
             // A ride offer repeats every dispatch round for every eligible rider -- it
             // shouldn't pile up as notification history, only ring/surface in the moment.
             persist: false,
+            tripOfferId: $offer->id,
         );
     }
 

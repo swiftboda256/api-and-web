@@ -61,7 +61,7 @@ test('a configured but unreadable key path sends FCM only, unchanged', function 
     $messaging = Mockery::mock(Messaging::class);
     $messaging->shouldReceive('sendMulticast')->once()->andReturn(MulticastSendReport::withItems([]));
 
-    (new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($rider, new PushMessage(
+    app()->instance(FcmGateway::class, new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($rider, new PushMessage(
         type: 'ride_offer', id: 1, title: 'New job', body: 'Nearby', persist: false,
     ));
 
@@ -78,7 +78,7 @@ test('a ringing type with no APNs credentials configured sends FCM only, unchang
         ->withArgs(fn ($message, array $tokens) => $tokens === ['fcm-token'])
         ->andReturn(MulticastSendReport::withItems([]));
 
-    (new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($rider, new PushMessage(
+    app()->instance(FcmGateway::class, new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($rider, new PushMessage(
         type: 'ride_offer', id: 1, title: 'New job', body: 'Nearby', persist: false,
     ));
 
@@ -101,7 +101,7 @@ test('a ringing type with a voip token also rings via APNs, and drops the FCM so
         })
         ->andReturn(MulticastSendReport::withItems([]));
 
-    (new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($rider, new PushMessage(
+    app()->instance(FcmGateway::class, new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($rider, new PushMessage(
         type: 'ride_offer', id: 436, title: 'New job', body: 'Nearby', sound: 'request_alert.caf', persist: false,
     ));
 
@@ -137,7 +137,7 @@ test('a passenger\'s voip push uses the passenger bundle id', function () {
     $messaging = Mockery::mock(Messaging::class);
     $messaging->shouldReceive('sendMulticast')->once()->andReturn(MulticastSendReport::withItems([]));
 
-    (new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($customer, new PushMessage(
+    app()->instance(FcmGateway::class, new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($customer, new PushMessage(
         type: 'trip_rider_arrived', id: 421, title: 'Your rider has arrived', body: 'Waiting', sound: 'trip_alert.caf',
     ));
 
@@ -152,7 +152,7 @@ test('a non-ringing type never rings via APNs even with a voip token on file', f
     $messaging = Mockery::mock(Messaging::class);
     $messaging->shouldReceive('sendMulticast')->once()->andReturn(MulticastSendReport::withItems([]));
 
-    (new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($rider, new PushMessage(
+    app()->instance(FcmGateway::class, new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($rider, new PushMessage(
         type: 'ride_completed', id: 1, title: 'Trip completed', body: 'Done',
     ));
 
@@ -167,7 +167,7 @@ test('a device with no voip token never rings via APNs', function () {
     $messaging = Mockery::mock(Messaging::class);
     $messaging->shouldReceive('sendMulticast')->once()->andReturn(MulticastSendReport::withItems([]));
 
-    (new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($rider, new PushMessage(
+    app()->instance(FcmGateway::class, new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($rider, new PushMessage(
         type: 'ride_offer', id: 1, title: 'New job', body: 'Nearby', persist: false,
     ));
 
@@ -182,7 +182,7 @@ test('a 410 from Apple clears the voip token so it stops being tried', function 
     $messaging = Mockery::mock(Messaging::class);
     $messaging->shouldReceive('sendMulticast')->once()->andReturn(MulticastSendReport::withItems([]));
 
-    (new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($rider, new PushMessage(
+    app()->instance(FcmGateway::class, new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($rider, new PushMessage(
         type: 'ride_offer', id: 1, title: 'New job', body: 'Nearby', persist: false,
     ));
 
@@ -197,7 +197,7 @@ test('a 400 BadDeviceToken from Apple clears the voip token', function () {
     $messaging = Mockery::mock(Messaging::class);
     $messaging->shouldReceive('sendMulticast')->once()->andReturn(MulticastSendReport::withItems([]));
 
-    (new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($rider, new PushMessage(
+    app()->instance(FcmGateway::class, new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($rider, new PushMessage(
         type: 'ride_offer', id: 1, title: 'New job', body: 'Nearby', persist: false,
     ));
 
@@ -212,7 +212,7 @@ test('an unrelated APNs failure logs but leaves the voip token alone', function 
     $messaging = Mockery::mock(Messaging::class);
     $messaging->shouldReceive('sendMulticast')->once()->andReturn(MulticastSendReport::withItems([]));
 
-    (new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($rider, new PushMessage(
+    app()->instance(FcmGateway::class, new FcmGateway($messaging, new ApnsVoipGateway))->sendToUser($rider, new PushMessage(
         type: 'ride_offer', id: 1, title: 'New job', body: 'Nearby', persist: false,
     ));
 
