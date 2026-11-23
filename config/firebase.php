@@ -195,7 +195,7 @@ return [
                  * https://github.com/beste/firebase-php/blob/6.x/src/Firebase/Http/HttpClientOptions.php
                  */
 
-                'timeout' => env('FIREBASE_HTTP_CLIENT_TIMEOUT'),
+                'timeout' => env('FIREBASE_HTTP_CLIENT_TIMEOUT', 5),
 
                 'guzzle_middlewares' => [
                     // MyInvokableMiddleware::class,
