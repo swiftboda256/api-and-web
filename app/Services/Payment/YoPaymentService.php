@@ -2,6 +2,7 @@
 
 namespace App\Services\Payment;
 
+use App\Services\Payment\Constants\GatewayStatus;
 use App\Services\Payment\Constants\MobileMoneyTransactionStatus;
 use App\Services\Payment\Contracts\PaymentGateway;
 use Illuminate\Support\Facades\Http;
@@ -23,6 +24,8 @@ use SimpleXMLElement;
 class YoPaymentService implements PaymentGateway
 {
     private const string SUPPORTED_CURRENCY = 'UGX';
+
+    private const string STATUS_CODE_NOT_FOUND = '-30';
 
     public function name(): string
     {
@@ -313,6 +316,7 @@ class YoPaymentService implements PaymentGateway
                 gatewayReference: null,
                 amount: $amount,
                 failureReason: 'Unable to reach the Yo! Payments gateway.',
+                gatewayStatus: GatewayStatus::Unreachable,
             );
         }
 
@@ -353,6 +357,11 @@ class YoPaymentService implements PaymentGateway
                 gatewayReference: null,
                 amount: $amount,
                 failureReason: $fields['StatusMessage'] ?? $fields['ErrorMessage'] ?? 'The transaction was rejected by Yo! Payments.',
+                gatewayStatus: match (true) {
+                    strtoupper((string) ($fields['TransactionStatus'] ?? '')) === 'INDETERMINATE' => GatewayStatus::Indeterminate,
+                    (string) ($fields['StatusCode'] ?? '') === self::STATUS_CODE_NOT_FOUND => GatewayStatus::NotFound,
+                    default => GatewayStatus::Error,
+                },
             );
         }
 

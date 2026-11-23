@@ -443,5 +443,82 @@ class ConfigurationSeeder extends Seeder
                 'is_public' => false,
             ],
         );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'transaction_check_stage_1_max_age_minutes'],
+            [
+                'value' => 2,
+                'value_type' => 'number',
+                'group' => 'transaction_check',
+                'description' => 'Stage 1 of checking pending withdrawals and reversals with the gateway applies until they are this many minutes old. Set to 0 to skip the stage.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'transaction_check_stage_1_interval_seconds'],
+            [
+                'value' => 0,
+                'value_type' => 'number',
+                'group' => 'transaction_check',
+                'description' => 'Seconds between gateway status checks in stage 1. 0 checks on every scheduler run (about every 2 seconds).',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'transaction_check_stage_2_max_age_minutes'],
+            [
+                'value' => 60,
+                'value_type' => 'number',
+                'group' => 'transaction_check',
+                'description' => 'Stage 2 of checking pending withdrawals and reversals with the gateway applies until they are this many minutes old. Set to 0 to skip the stage.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'transaction_check_stage_2_interval_seconds'],
+            [
+                'value' => 60,
+                'value_type' => 'number',
+                'group' => 'transaction_check',
+                'description' => 'Seconds between gateway status checks in stage 2. Must be at least 1.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'transaction_check_stage_3_max_age_minutes'],
+            [
+                'value' => 1440,
+                'value_type' => 'number',
+                'group' => 'transaction_check',
+                'description' => 'Stage 3 of checking pending withdrawals and reversals with the gateway applies until they are this many minutes old. Set to 0 to skip the stage.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'transaction_check_stage_3_interval_seconds'],
+            [
+                'value' => 900,
+                'value_type' => 'number',
+                'group' => 'transaction_check',
+                'description' => 'Seconds between gateway status checks in stage 3. Must be at least 1.',
+                'is_public' => false,
+            ],
+        );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'transaction_check_final_interval_seconds'],
+            [
+                'value' => 21600,
+                'value_type' => 'number',
+                'group' => 'transaction_check',
+                'description' => 'Seconds between gateway status checks for pending withdrawals and reversals older than stage 3. Must be at least 1.',
+                'is_public' => false,
+            ],
+        );
     }
 }

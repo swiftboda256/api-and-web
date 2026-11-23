@@ -72,7 +72,24 @@ class TransactionsTable
                         'reversed' => 'info',
                         default => 'gray',
                     })
-                    ->formatStateUsing(fn (string $state): string => str($state)->headline()),
+                    ->formatStateUsing(fn (string $state): string => str($state)->headline())
+                    ->description(fn (Transaction $record): ?string => $record->isGatewayOverdue() ? 'Over 24h: raise with Yo!' : null),
+                TextColumn::make('last_gateway_status')
+                    ->label('Last gateway answer')
+                    ->badge()
+                    ->color('gray')
+                    ->formatStateUsing(fn (string $state): string => str($state)->headline())
+                    ->placeholder('—')
+                    ->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('status_check_attempts')
+                    ->label('Status checks')
+                    ->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('next_status_check_at')
+                    ->label('Next check')
+                    ->dateTime()
+                    ->state(fn (Transaction $record) => $record->status === 'pending' ? $record->next_status_check_at : null)
+                    ->placeholder('—')
+                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable(),
@@ -126,6 +143,10 @@ class TransactionsTable
                         'credit' => 'Credit',
                         'debit' => 'Debit',
                     ]),
+                Filter::make('gateway_overdue')
+                    ->label('Unresolved over 24 hours')
+                    ->toggle()
+                    ->query(self::onlyGatewayOverdue(...)),
                 Filter::make('created_at')
                     ->label('Date')
                     ->schema([
@@ -169,5 +190,14 @@ class TransactionsTable
                     TransactionExportActions::exportBulk(),
                 ]),
             ]);
+    }
+
+    /**
+     * @param  Builder<Transaction>  $query
+     * @return Builder<Transaction>
+     */
+    private static function onlyGatewayOverdue(Builder $query): Builder
+    {
+        return $query->gatewayOverdue();
     }
 }

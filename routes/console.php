@@ -14,7 +14,15 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::command(DispatchScheduledTrips::class)->everyMinute()->withoutOverlapping();
-Schedule::command(ResolvePendingTransactions::class)->everyTwoSeconds()->withoutOverlapping();
+
+// Runs inside the scheduler process: a Schedule::command() would boot a fresh
+// PHP process every two seconds. The lock expires after a minute so a killed
+// scheduler can't block polling for the default 24 hours.
+Schedule::call(fn () => Artisan::call(ResolvePendingTransactions::class))
+    ->name('transactions:resolve-pending')
+    ->everyTwoSeconds()
+    ->withoutOverlapping(1);
+
 Schedule::command(ExpireRideShareJoinRequests::class)->everyFiveSeconds()->withoutOverlapping();
 Schedule::command(ExpirePostedRideRequests::class)->everyMinute()->withoutOverlapping();
 Schedule::command(ProcessTripDispatch::class)->everyTenSeconds()->withoutOverlapping();
