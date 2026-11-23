@@ -36,4 +36,9 @@ Schedule::call(fn () => Artisan::call(ExpireRideShareJoinRequests::class))
     ->withoutOverlapping(5);
 
 Schedule::command(ExpirePostedRideRequests::class)->everyMinute()->withoutOverlapping(5);
-Schedule::command(ProcessTripDispatch::class)->everyTenSeconds()->withoutOverlapping(5);
+
+// In-process like the other sub-minute commands; its pushes are queued, so it stays short.
+Schedule::call(fn () => Artisan::call(ProcessTripDispatch::class))
+    ->name('trips:process-dispatch')
+    ->everyTenSeconds()
+    ->withoutOverlapping(5);
