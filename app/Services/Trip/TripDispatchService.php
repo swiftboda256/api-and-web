@@ -213,12 +213,20 @@ readonly class TripDispatchService
     private function eligibleRiders(Point $pickup, int $vehicleTypeId): Builder
     {
         $radiusMeters = (float) Configuration::get('dispatch_radius_km', 5) * 1000;
+        [$longitudeSpan, $latitudeSpan] = Geo::degreesAround($pickup, $radiusMeters);
 
         return RiderProfile::query()
             ->where('availability_status', 'online')
             ->whereNotNull('current_location')
             ->withinWalletLimit()
             ->whereHas('vehicle', fn ($query) => $query->where('vehicle_type_id', $vehicleTypeId)->where('status', 'approved'))
+            // Lets the spatial index narrow the search; distanceSphere alone can't use it.
+            ->whereRaw('current_location && ST_MakeEnvelope(?, ?, ?, ?, 4326)', [
+                $pickup->getLongitude() - $longitudeSpan,
+                $pickup->getLatitude() - $latitudeSpan,
+                $pickup->getLongitude() + $longitudeSpan,
+                $pickup->getLatitude() + $latitudeSpan,
+            ])
             ->where(ST::distanceSphere('current_location', $pickup), '<=', $radiusMeters);
     }
 

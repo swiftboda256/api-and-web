@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Models\Vehicle;
 use App\Models\VehicleType;
 use App\Services\Push\FcmGateway;
+use App\Services\Trip\TripDispatchService;
 use App\Services\Trip\TripService;
 use Clickbar\Magellan\Data\Geometries\Point;
 
@@ -57,3 +58,18 @@ test('a scheduled trip whose dispatch fails is picked up by the dispatch loop', 
 
     expect(TripOffer::query()->where('trip_id', $this->trip->id)->pluck('rider_id')->all())->toBe([$rider->id]);
 });
+
+test('the dispatch radius keeps riders inside it in every direction and drops those outside', function (float $bearing) {
+    // The default dispatch radius is 5 km; one degree is about 111.195 km on the sphere.
+    $at = fn (float $km): array => [
+        0.34 + $km / 111.195 * cos(deg2rad($bearing)),
+        32.5825 + $km / 111.195 * sin(deg2rad($bearing)) / cos(deg2rad(0.34)),
+    ];
+    $inside = riderAt($this, ...$at(4.99));
+    riderAt($this, ...$at(5.01));
+    $this->trip->update(['status' => 'searching']);
+
+    app(TripDispatchService::class)->startSearch($this->trip);
+
+    expect(TripOffer::query()->pluck('rider_id')->all())->toBe([$inside->id]);
+})->with([0, 45, 90, 180, 225, 270]);

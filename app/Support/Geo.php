@@ -10,6 +10,21 @@ use Clickbar\Magellan\Data\Geometries\Point;
  */
 final class Geo
 {
+    /**
+     * Degrees [longitude, latitude] each way from the point that contain everything within
+     * $meters of it: a cheap, index-friendly box to narrow a query before the exact
+     * ST_DistanceSphere check. Slightly oversized, so it never excludes a match.
+     *
+     * @return array{0: float, 1: float}
+     */
+    public static function degreesAround(Point $point, float $meters): array
+    {
+        $latitude = $meters / 110_000;
+        $cosine = cos(deg2rad(min(89.0, abs($point->getLatitude()) + $latitude)));
+
+        return [$latitude / $cosine, $latitude];
+    }
+
     private const float EARTH_RADIUS_KM = 6371.0;
 
     public static function haversineKm(Point $from, Point $to): float
