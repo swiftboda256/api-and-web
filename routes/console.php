@@ -25,6 +25,11 @@ Schedule::call(fn () => Artisan::call(ResolvePendingTransactions::class))
     ->everyTwoSeconds()
     ->withoutOverlapping(1);
 
-Schedule::command(ExpireRideShareJoinRequests::class)->everyFiveSeconds()->withoutOverlapping(5);
+// Also runs inside the scheduler process, to avoid a fresh boot every five seconds.
+Schedule::call(fn () => Artisan::call(ExpireRideShareJoinRequests::class))
+    ->name('ride-share:expire-join-requests')
+    ->everyFiveSeconds()
+    ->withoutOverlapping(5);
+
 Schedule::command(ExpirePostedRideRequests::class)->everyMinute()->withoutOverlapping(5);
 Schedule::command(ProcessTripDispatch::class)->everyTenSeconds()->withoutOverlapping(5);
