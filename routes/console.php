@@ -13,6 +13,10 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
+// Without this the sub-minute loop queries the cache about 40 times a second for pause and
+// interrupt signals. schedule:pause and schedule:interrupt have no effect as a result.
+Schedule::withoutInterruptionPolling();
+
 // Overlap locks expire after five minutes so one left behind by a killed process
 // can't block its command for the default 24 hours.
 Schedule::command(DispatchScheduledTrips::class)->everyMinute()->withoutOverlapping(5);
