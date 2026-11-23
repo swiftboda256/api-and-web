@@ -46,8 +46,47 @@ class ExpireRideShareJoinRequests extends Command
                 }
             });
 
+        $count += $this->reofferStranded($tripService);
+
         $this->info("Expired and re-offered {$count} ride-share join request(s).");
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Retries passengers released from a trip whose re-offer then failed (an error, or no
+     * pricing rule): they have no expiry left for the sweep above to find. Waits a minute
+     * between attempts, leaving room for a decline's own re-offer to finish.
+     */
+    private function reofferStranded(TripService $tripService): int
+    {
+        $count = 0;
+        $stranded = fn () => TripPassenger::query()
+            ->where('status', 'pending_approval')
+            ->whereNull('request_expires_at')
+            ->whereNotNull('declined_trip_ids')
+            ->where('updated_at', '<=', now()->subMinute())
+            ->whereHas('trip', fn ($query) => $query->where('type', 'ride_share'));
+
+        $stranded()->chunkById(100, function ($passengers) use ($stranded, $tripService, &$count): void {
+            foreach ($passengers as $passenger) {
+                // Claimed by touching updated_at, which also spaces out the retries.
+                if ($stranded()->whereKey($passenger->id)->update(['updated_at' => now()]) === 0) {
+                    continue;
+                }
+
+                try {
+                    $tripService->reofferRideShareRequest($passenger);
+                    $count++;
+                } catch (Throwable $e) {
+                    Log::error('ride_share.stranded_reoffer_failed', [
+                        'trip_passenger_id' => $passenger->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+        });
+
+        return $count;
     }
 }
