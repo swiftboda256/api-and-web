@@ -13,7 +13,9 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Schedule::command(DispatchScheduledTrips::class)->everyMinute()->withoutOverlapping();
+// Overlap locks expire after five minutes so one left behind by a killed process
+// can't block its command for the default 24 hours.
+Schedule::command(DispatchScheduledTrips::class)->everyMinute()->withoutOverlapping(5);
 
 // Runs inside the scheduler process: a Schedule::command() would boot a fresh
 // PHP process every two seconds. The lock expires after a minute so a killed
@@ -23,6 +25,6 @@ Schedule::call(fn () => Artisan::call(ResolvePendingTransactions::class))
     ->everyTwoSeconds()
     ->withoutOverlapping(1);
 
-Schedule::command(ExpireRideShareJoinRequests::class)->everyFiveSeconds()->withoutOverlapping();
-Schedule::command(ExpirePostedRideRequests::class)->everyMinute()->withoutOverlapping();
-Schedule::command(ProcessTripDispatch::class)->everyTenSeconds()->withoutOverlapping();
+Schedule::command(ExpireRideShareJoinRequests::class)->everyFiveSeconds()->withoutOverlapping(5);
+Schedule::command(ExpirePostedRideRequests::class)->everyMinute()->withoutOverlapping(5);
+Schedule::command(ProcessTripDispatch::class)->everyTenSeconds()->withoutOverlapping(5);
