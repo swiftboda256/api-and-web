@@ -2,6 +2,8 @@
 
 namespace App\Filament\Resources\PricingRules\Tables;
 
+use App\Filament\Resources\PricingRules\Actions\ApplyToZonesAction;
+use App\Filament\Resources\PricingRules\Actions\BulkUpdatePricingAction;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
@@ -10,6 +12,7 @@ use Filament\Actions\ForceDeleteBulkAction;
 use Filament\Actions\RestoreBulkAction;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
 
@@ -66,15 +69,22 @@ class PricingRulesTable
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
+                SelectFilter::make('zone')
+                    ->relationship('zone', 'name')
+                    ->multiple()
+                    ->searchable()
+                    ->preload(),
                 TrashedFilter::make(),
             ])
             ->recordActions([
                 ActionGroup::make([
                     EditAction::make(),
+                    ApplyToZonesAction::make(),
                 ]),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
+                    BulkUpdatePricingAction::make(),
                     DeleteBulkAction::make(),
                     ForceDeleteBulkAction::make(),
                     RestoreBulkAction::make(),
