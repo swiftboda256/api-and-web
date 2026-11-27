@@ -19,7 +19,7 @@ class ListTransactions extends ListRecords
     {
         return [
             // TODO: Delete test transactions before uncommenting.
-//            TransactionStatsOverview::class,
+            //            TransactionStatsOverview::class,
         ];
     }
 }

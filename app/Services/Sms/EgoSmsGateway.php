@@ -5,38 +5,47 @@ namespace App\Services\Sms;
 use App\Services\Sms\Contracts\SmsGateway;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * Wraps the Pahappa/EgoSMS JSON API.
  *
- * Response shape confirmed against the live endpoint (with invalid/blank
- * credentials): {"Status":"Failed","Message":"..."}. The success shape
- * hasn't been observed yet (needs real credentials), so a missing/failed
- * "Status" is treated as authoritative failure, anything else as success.
- * The raw response is always logged so this can be tightened further once
- * a real success response has been seen.
+ * EgoSMS answers each send right away with {"Status":"Success"|"Failed","Message":"..."}
+ * and has no delivery callbacks, so that answer is the final result. "Failed" is a
+ * failure (Message = the reason), anything else a success. The raw response is logged.
  */
 class EgoSmsGateway implements SmsGateway
 {
     public function send(string $to, string $message, ?string $senderId = null): bool
     {
+        return $this->deliver($to, $message, $senderId) === null;
+    }
+
+    public function deliver(string $to, string $message, ?string $senderId = null): ?string
+    {
         $config = config('services.egosms');
 
-        $response = Http::asJson()->post($config['base_url'], [
-            'method' => 'SendSms',
-            'userdata' => [
-                'username' => $config['username'],
-                'password' => $config['password'],
-            ],
-            'msgdata' => [
-                [
-                    'number' => $to,
-                    'message' => $message,
-                    'senderid' => $senderId ?? $config['sender_id'],
-                    'priority' => $config['priority'],
+        try {
+            $response = Http::asJson()->timeout(20)->post($config['base_url'], [
+                'method' => 'SendSms',
+                'userdata' => [
+                    'username' => $config['username'],
+                    'password' => $config['password'],
                 ],
-            ],
-        ]);
+                'msgdata' => [
+                    [
+                        'number' => $to,
+                        'message' => $message,
+                        'senderid' => $senderId ?? $config['sender_id'],
+                        'priority' => $config['priority'],
+                    ],
+                ],
+            ]);
+        } catch (Throwable $e) {
+            Log::error('egosms.send_failed', ['to' => $to, 'error' => $e->getMessage()]);
+
+            return 'Could not reach EgoSMS: '.$e->getMessage();
+        }
 
         Log::info('egosms.response', [
             'to' => $to,
@@ -51,7 +60,7 @@ class EgoSmsGateway implements SmsGateway
                 'error' => $response->body(),
             ]);
 
-            return false;
+            return 'EgoSMS returned HTTP '.$response->status();
         }
 
         $status = (string) ($response->json('Status') ?? $response->json('status') ?? '');
@@ -63,9 +72,9 @@ class EgoSmsGateway implements SmsGateway
                 'error' => $response->json('Message') ?? $response->body(),
             ]);
 
-            return false;
+            return 'EgoSMS: '.($response->json('Message') ?? 'request failed');
         }
 
-        return true;
+        return null;
     }
 }

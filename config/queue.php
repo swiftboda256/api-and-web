@@ -133,4 +133,11 @@ return [
 
     'push_queue' => env('PUSH_QUEUE'),
 
+    /*
+    | Queue admin Communications (bulk push/email/SMS) go out on. Give it its own queue in
+    | production so a big broadcast doesn't delay trip pushes (--queue=push,default,communications).
+    */
+
+    'communications_queue' => env('COMMUNICATIONS_QUEUE'),
+
 ];

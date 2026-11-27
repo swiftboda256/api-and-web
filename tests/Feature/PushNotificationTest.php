@@ -413,9 +413,11 @@ test('a push with no badge of its own gets the recipient\'s unread notification 
     {
         public array $captured = [];
 
-        public function sendToTokens(array $tokens, PushMessage $message): void
+        public function sendToTokens(array $tokens, PushMessage $message): array
         {
             $this->captured[] = $message;
+
+            return [];
         }
     };
 
@@ -437,9 +439,11 @@ test('a ride offer keeps its own badge instead of the unread notification count'
     {
         public array $captured = [];
 
-        public function sendToTokens(array $tokens, PushMessage $message): void
+        public function sendToTokens(array $tokens, PushMessage $message): array
         {
             $this->captured[] = $message;
+
+            return [];
         }
     };
 

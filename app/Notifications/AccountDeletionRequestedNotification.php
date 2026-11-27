@@ -2,7 +2,6 @@
 
 namespace App\Notifications;
 
-use App\Models\UserDeleteRequest;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 

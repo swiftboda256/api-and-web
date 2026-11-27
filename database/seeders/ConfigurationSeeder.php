@@ -520,5 +520,16 @@ class ConfigurationSeeder extends Seeder
                 'is_public' => false,
             ],
         );
+
+        Configuration::query()->firstOrCreate(
+            ['key' => 'sms_cost_per_sms'],
+            [
+                'value' => 35,
+                'value_type' => 'number',
+                'group' => 'communications',
+                'description' => 'UGX EgoSMS charges per SMS part (160 characters, or 70 with emoji / non-Latin text). Used for the cost warning and cost totals on admin Communications; it does not change what EgoSMS bills.',
+                'is_public' => false,
+            ],
+        );
     }
 }

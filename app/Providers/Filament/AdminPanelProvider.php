@@ -44,6 +44,7 @@ class AdminPanelProvider extends PanelProvider
                 'Users',
                 'Trips',
                 'Support',
+                'Communications',
                 'Pricing',
                 'Finances',
                 'System',

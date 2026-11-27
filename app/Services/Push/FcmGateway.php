@@ -49,6 +49,15 @@ class FcmGateway
      */
     public function deliver(User $user, PushMessage $message): void
     {
+        $this->deliverNow($user, $message);
+    }
+
+    /**
+     * Same as deliver(), but says how it went: null when FCM accepted the push, otherwise
+     * why it didn't go out (used by the admin Communications log).
+     */
+    public function deliverNow(User $user, PushMessage $message): ?string
+    {
         // Most pushes don't set their own badge -- default it to the recipient's unread
         // count (now including anything just persisted above). A silent push has no alert
         // to badge, and some pushes (e.g. a ride offer) carry a more specific count already.
@@ -56,15 +65,10 @@ class FcmGateway
             $message = $message->withBadge($user->unreadNotifications()->count());
         }
 
-        $device = $user->devices()
-            ->where('active', true)
-            ->whereNotNull('fcm_token')
-            ->where('fcm_token', '!=', '')
-            ->latest('last_seen_at')
-            ->first();
+        $device = $this->activeDevice($user);
 
         if ($device === null) {
-            return;
+            return 'No active device with an FCM token';
         }
 
         // On a ringing event, a device with a VoIP token also gets rung there -- the only
@@ -76,16 +80,33 @@ class FcmGateway
             $this->voip->sendRingingPush($user, $device, $message);
         }
 
-        $this->sendToTokens([(string) $device->fcm_token], $ringsOnVoip ? $message->withoutSound() : $message);
+        $failures = $this->sendToTokens([(string) $device->fcm_token], $ringsOnVoip ? $message->withoutSound() : $message);
+
+        return $failures === [] ? null : (string) reset($failures);
+    }
+
+    /**
+     * The device a push goes to: a user has at most one active one (logging in on another
+     * device deactivates the others).
+     */
+    public function activeDevice(User $user): ?UserDevice
+    {
+        return $user->devices()
+            ->where('active', true)
+            ->whereNotNull('fcm_token')
+            ->where('fcm_token', '!=', '')
+            ->latest('last_seen_at')
+            ->first();
     }
 
     /**
      * @param  list<string>  $tokens
+     * @return array<string, string> the tokens FCM didn't take, with the reason ([] = all sent)
      */
-    public function sendToTokens(array $tokens, PushMessage $message): void
+    public function sendToTokens(array $tokens, PushMessage $message): array
     {
         if ($tokens === []) {
-            return;
+            return [];
         }
 
         try {
@@ -93,11 +114,11 @@ class FcmGateway
         } catch (Throwable $e) {
             Log::error('fcm.send_failed', ['type' => $message->type, 'id' => (string) $message->id, 'error' => $e->getMessage()]);
 
-            return;
+            return array_fill_keys($tokens, 'FCM error: '.$e->getMessage());
         }
 
         if (! $report->hasFailures()) {
-            return;
+            return [];
         }
 
         $failures = $report->failures()->getItems();
@@ -120,5 +141,13 @@ class FcmGateway
         if ($deadTokens !== []) {
             UserDevice::query()->whereIn('fcm_token', $deadTokens)->update(['active' => false]);
         }
+
+        return collect($failures)
+            ->mapWithKeys(fn (SendReport $item): array => [
+                $item->target()->value() => $item->error() instanceof NotFound
+                    ? 'FCM token no longer registered (app uninstalled or logged out)'
+                    : 'FCM rejected the push: '.($item->error()?->getMessage() ?? 'unknown error'),
+            ])
+            ->all();
     }
 }
