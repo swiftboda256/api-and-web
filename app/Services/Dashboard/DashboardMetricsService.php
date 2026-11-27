@@ -280,12 +280,17 @@ class DashboardMetricsService
     }
 
     /**
+     * Commission the platform earned: the credit to the system account, one per booking.
+     * A cash trip also has a commission *debit* on the rider's wallet -- the same money
+     * collected from the rider, not extra income -- so debits are left out.
+     *
      * @return Builder<Transaction>
      */
     private function completedCommissions(): Builder
     {
         return Transaction::query()
             ->where('transaction_type', 'commission')
+            ->where('direction', 'credit')
             ->where('status', 'completed');
     }
 

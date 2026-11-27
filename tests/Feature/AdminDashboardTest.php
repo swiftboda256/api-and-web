@@ -99,22 +99,24 @@ test('all time counts every customer and completed commission, with this month s
     User::factory()->customer()->count(2)->create();
     User::factory()->rider()->create();
 
-    $commission = fn (string $status, float $amount) => Transaction::query()->create([
+    $commission = fn (string $status, float $amount, string $direction = 'credit') => Transaction::query()->create([
         'user_id' => User::factory()->create()->id,
         'method' => 'cash',
-        'direction' => 'credit',
+        'direction' => $direction,
         'transaction_type' => 'commission',
         'amount' => $amount,
         'currency_code' => 'UGX',
         'status' => $status,
     ]);
     $commission('completed', 450);
+    $commission('completed', 450, 'debit'); // the same cash-trip commission, taken from the rider's wallet
     $commission('pending', 999);
 
     // Last month: in the totals, not in "this month".
     $this->travelTo(now()->subMonth());
     User::factory()->customer()->create();
     $commission('completed', 1000);
+    $commission('completed', 1000, 'debit');
     $this->travelBack();
     $this->travelTo(now()->setDate(2026, 11, 15)->setTime(12, 0));
 
@@ -173,16 +175,17 @@ test('today counts dropped-off passenger and delivery fares, and completed commi
     $this->travelBack();
     $this->travelTo(now()->setTime(12, 0));
 
-    $commission = fn (string $status, float $amount) => Transaction::query()->create([
+    $commission = fn (string $status, float $amount, string $direction = 'credit') => Transaction::query()->create([
         'user_id' => User::factory()->create()->id,
         'method' => 'cash',
-        'direction' => 'credit',
+        'direction' => $direction,
         'transaction_type' => 'commission',
         'amount' => $amount,
         'currency_code' => 'UGX',
         'status' => $status,
     ]);
     $commission('completed', 450);
+    $commission('completed', 450, 'debit'); // the same cash-trip commission, taken from the rider's wallet
     $commission('pending', 999);
 
     $today = app(DashboardMetricsService::class)->today();

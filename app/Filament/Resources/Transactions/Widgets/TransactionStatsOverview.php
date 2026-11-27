@@ -79,7 +79,9 @@ class TransactionStatsOverview extends StatsOverviewWidget
         return Transaction::query()
             ->when($from, fn ($query) => $query->where('created_at', '>=', $from))
             ->when($to, fn ($query) => $query->where('created_at', '<=', $to))
-            ->selectRaw("COALESCE(SUM(CASE WHEN transaction_type = 'commission' AND status = 'completed' THEN amount END), 0) AS commissions")
+            // Credits only: a cash trip's commission debit on the rider's wallet is the same
+            // money as the platform's credit (see DashboardMetricsService::completedCommissions).
+            ->selectRaw("COALESCE(SUM(CASE WHEN transaction_type = 'commission' AND direction = 'credit' AND status = 'completed' THEN amount END), 0) AS commissions")
             ->selectRaw("COALESCE(SUM(CASE WHEN transaction_type = 'trip_payout' AND status = 'completed' THEN amount END), 0) AS payouts")
             ->selectRaw("COALESCE(SUM(CASE WHEN transaction_type = 'topup' AND status = 'completed' THEN amount END), 0) AS deposits")
             ->selectRaw("COALESCE(SUM(CASE WHEN transaction_type = 'withdrawal' AND status = 'completed' THEN amount END), 0) AS withdrawals")
