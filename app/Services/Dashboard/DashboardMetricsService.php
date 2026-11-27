@@ -121,6 +121,25 @@ class DashboardMetricsService
     }
 
     /**
+     * Totals since launch, with this month so far for context.
+     *
+     * @return array{customers: int, customers_this_month: int, commission: float, commission_this_month: float}
+     */
+    public function allTime(): array
+    {
+        return Cache::remember('dashboard:all-time', self::CACHE_SECONDS, function (): array {
+            $monthStart = CarbonImmutable::now()->startOfMonth();
+
+            return [
+                'customers' => User::query()->role('customer')->count(),
+                'customers_this_month' => User::query()->role('customer')->where('created_at', '>=', $monthStart)->count(),
+                'commission' => (float) $this->completedCommissions()->sum('amount'),
+                'commission_this_month' => (float) $this->completedCommissions()->where('created_at', '>=', $monthStart)->sum('amount'),
+            ];
+        });
+    }
+
+    /**
      * Counts that need an admin's action. Zero means nothing to do.
      *
      * @return array<string, int>

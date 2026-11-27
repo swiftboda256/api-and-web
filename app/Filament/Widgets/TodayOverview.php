@@ -10,6 +10,8 @@ use Filament\Widgets\StatsOverviewWidget\Stat;
 
 /**
  * Today so far vs yesterday up to the same time, with a 7-day sparkline. Cached for 60s.
+ * Descriptions are plain differences ("2 fewer than yesterday by this time"), not
+ * percentages, which mislead on small numbers (1 → 0 trips read as "-100%").
  */
 class TodayOverview extends StatsOverviewWidget
 {
@@ -19,7 +21,7 @@ class TodayOverview extends StatsOverviewWidget
 
     protected ?string $heading = 'Today';
 
-    protected ?string $description = 'Compared with yesterday at this time · trend over the last 7 days';
+    protected ?string $description = 'How today is going compared with yesterday up to the same time. The small chart shows the last 7 days.';
 
     protected ?string $pollingInterval = '60s';
 
@@ -32,16 +34,9 @@ class TodayOverview extends StatsOverviewWidget
     {
         $today = app(DashboardMetricsService::class)->today();
 
-        $completed = $today['completed']['today'];
-        $cancelled = $today['cancelled']['today'];
-        $finished = $completed + $cancelled;
-        $completionRate = $finished > 0 ? round($completed / $finished * 100) : null;
-
         return [
-            $this->stat('Trips completed', $today['completed'], Heroicon::OutlinedCheckBadge, true)
-                ->description($this->change($today['completed'], true).($completionRate !== null ? " · {$completionRate}% completion" : '')),
-            $this->stat('Trips cancelled', $today['cancelled'], Heroicon::OutlinedXCircle, false)
-                ->description($this->change($today['cancelled'], false).($completionRate !== null ? ' · '.(100 - $completionRate).'% of finished' : '')),
+            $this->stat('Trips completed', $today['completed'], Heroicon::OutlinedCheckBadge, true),
+            $this->stat('Trips cancelled', $today['cancelled'], Heroicon::OutlinedXCircle, false),
             $this->stat('Gross fares', $today['gross'], Heroicon::OutlinedBanknotes, true, money: true),
             $this->stat('Commission earned', $today['commission'], Heroicon::OutlinedReceiptPercent, true, money: true),
             $this->stat('New customers', $today['customers'], Heroicon::OutlinedUserPlus, true),
@@ -59,7 +54,7 @@ class TodayOverview extends StatsOverviewWidget
 
         return Stat::make($label, $value)
             ->icon($icon)
-            ->description($this->change($metric, $increaseIsGood))
+            ->description($this->change($metric, $money))
             ->descriptionIcon(match ($direction) {
                 1 => Heroicon::ArrowTrendingUp,
                 -1 => Heroicon::ArrowTrendingDown,
@@ -74,20 +69,25 @@ class TodayOverview extends StatsOverviewWidget
     }
 
     /**
+     * Plain-language comparison with yesterday up to the same time, e.g. "3 more than
+     * yesterday by this time" or "UGX 12,000 less than yesterday by this time".
+     *
      * @param  array{today: float, yesterday: float, trend: list<int|float>}  $metric
      */
-    private function change(array $metric, bool $increaseIsGood): string
+    private function change(array $metric, bool $money): string
     {
-        if ($metric['yesterday'] == 0.0) {
-            return $metric['today'] == 0.0 ? 'Same as yesterday' : 'None by this time yesterday';
-        }
-
-        $change = round(($metric['today'] - $metric['yesterday']) / $metric['yesterday'] * 100);
+        $today = $metric['today'];
+        $yesterday = $metric['yesterday'];
+        $amount = fn (float $value): string => $money ? 'UGX '.number_format($value) : number_format($value);
 
         return match (true) {
-            $change == 0.0 => 'Same as yesterday',
-            $change > 0 => "+{$change}% vs yesterday",
-            default => "{$change}% vs yesterday",
+            $today == $yesterday && $today == 0.0 => 'None yet, same as yesterday by this time',
+            $today == $yesterday => 'Same as yesterday by this time',
+            $today == 0.0 => 'None yet. Yesterday had '.$amount($yesterday).' by this time',
+            $yesterday == 0.0 => 'Yesterday had none by this time',
+            default => $amount(abs($today - $yesterday)).' '
+                .($today > $yesterday ? 'more' : ($money ? 'less' : 'fewer'))
+                .' than yesterday by this time',
         };
     }
 }

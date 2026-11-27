@@ -17,7 +17,7 @@ class TopRidersWidget extends Widget
 {
     use HasWidgetShield;
 
-    protected static ?int $sort = 5;
+    protected static ?int $sort = 6;
 
     protected string $view = 'filament.widgets.top-riders-widget';
 

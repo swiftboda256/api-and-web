@@ -13,7 +13,7 @@ class RevenueTrendChart extends ChartWidget
 {
     use HasWidgetShield;
 
-    protected static ?int $sort = 7;
+    protected static ?int $sort = 8;
 
     protected ?string $heading = 'Revenue (UGX)';
 

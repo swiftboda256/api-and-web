@@ -1,5 +1,6 @@
 <?php
 
+use App\Filament\Widgets\AllTimeOverview;
 use App\Filament\Widgets\LatestTripsWidget;
 use App\Filament\Widgets\LiveOperationsOverview;
 use App\Filament\Widgets\NeedsAttentionWidget;
@@ -74,7 +75,7 @@ test('the dashboard and every widget render for a super admin', function () {
     $this->actingAs($admin)->get('/admin')->assertOk();
 
     foreach ([
-        WelcomeWidget::class, LiveOperationsOverview::class, TodayOverview::class, NeedsAttentionWidget::class,
+        WelcomeWidget::class, LiveOperationsOverview::class, TodayOverview::class, AllTimeOverview::class, NeedsAttentionWidget::class,
         TopRidersWidget::class, TripsTrendChart::class, RevenueTrendChart::class, TripTypesChart::class,
         PaymentMethodsChart::class, LatestTripsWidget::class,
     ] as $widget) {
@@ -88,7 +89,68 @@ test('widgets are hidden from an admin without their permission', function () {
     $this->actingAs(User::factory()->create()->assignRole('admin'));
 
     expect(LiveOperationsOverview::canView())->toBeFalse()
+        ->and(AllTimeOverview::canView())->toBeFalse()
         ->and(RevenueTrendChart::canView())->toBeFalse();
+});
+
+test('all time counts every customer and completed commission, with this month so far', function () {
+    $this->travelTo(now()->setDate(2026, 11, 15)->setTime(12, 0));
+
+    User::factory()->customer()->count(2)->create();
+    User::factory()->rider()->create();
+
+    $commission = fn (string $status, float $amount) => Transaction::query()->create([
+        'user_id' => User::factory()->create()->id,
+        'method' => 'cash',
+        'direction' => 'credit',
+        'transaction_type' => 'commission',
+        'amount' => $amount,
+        'currency_code' => 'UGX',
+        'status' => $status,
+    ]);
+    $commission('completed', 450);
+    $commission('pending', 999);
+
+    // Last month: in the totals, not in "this month".
+    $this->travelTo(now()->subMonth());
+    User::factory()->customer()->create();
+    $commission('completed', 1000);
+    $this->travelBack();
+    $this->travelTo(now()->setDate(2026, 11, 15)->setTime(12, 0));
+
+    expect(app(DashboardMetricsService::class)->allTime())->toBe([
+        'customers' => 3,
+        'customers_this_month' => 2,
+        'commission' => 1450.0,
+        'commission_this_month' => 450.0,
+    ]);
+});
+
+test('today cards describe the change in plain words', function () {
+    $this->seed(PermissionSeeder::class);
+    $this->actingAs(User::factory()->create()->assignRole('super_admin'));
+    $this->travelTo(now()->setTime(12, 0));
+
+    // Yesterday morning: one ride. Today: none yet.
+    $this->travelTo(now()->subDay()->setTime(9, 0));
+    completedRideWithFare(3000);
+    $this->travelBack();
+    $this->travelTo(now()->setTime(12, 0));
+
+    Livewire::test(TodayOverview::class)
+        ->assertSee('None yet. Yesterday had 1 by this time')
+        ->assertSee('None yet. Yesterday had UGX 3,000 by this time')
+        ->assertSee('None yet, same as yesterday by this time')
+        ->assertDontSee('vs yesterday');
+
+    // Today: two rides, one more than yesterday by now.
+    cache()->flush();
+    completedRideWithFare(5000);
+    completedRideWithFare(1000);
+
+    Livewire::test(TodayOverview::class)
+        ->assertSee('1 more than yesterday by this time')
+        ->assertSee('UGX 3,000 more than yesterday by this time');
 });
 
 test('today counts dropped-off passenger and delivery fares, and completed commissions', function () {

@@ -18,7 +18,7 @@ class NeedsAttentionWidget extends Widget
 {
     use HasWidgetShield;
 
-    protected static ?int $sort = 4;
+    protected static ?int $sort = 5;
 
     protected string $view = 'filament.widgets.needs-attention-widget';
 

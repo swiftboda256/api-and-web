@@ -14,7 +14,7 @@ class LatestTripsWidget extends TableWidget
 {
     use HasWidgetShield;
 
-    protected static ?int $sort = 10;
+    protected static ?int $sort = 11;
 
     protected int|string|array $columnSpan = 'full';
 

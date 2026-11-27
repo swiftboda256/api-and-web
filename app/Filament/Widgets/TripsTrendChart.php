@@ -10,7 +10,7 @@ class TripsTrendChart extends ChartWidget
 {
     use HasWidgetShield;
 
-    protected static ?int $sort = 6;
+    protected static ?int $sort = 7;
 
     protected ?string $heading = 'Trips';
 

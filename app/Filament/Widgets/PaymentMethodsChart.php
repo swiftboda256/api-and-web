@@ -10,7 +10,7 @@ class PaymentMethodsChart extends ChartWidget
 {
     use HasWidgetShield;
 
-    protected static ?int $sort = 9;
+    protected static ?int $sort = 10;
 
     protected ?string $heading = 'Payment methods';
 
