@@ -122,10 +122,50 @@ test('all time counts every customer and completed commission, with this month s
 
     expect(app(DashboardMetricsService::class)->allTime())->toBe([
         'customers' => 3,
+        'customers_with_trip' => 0,
         'customers_this_month' => 2,
         'commission' => 1450.0,
         'commission_this_month' => 450.0,
     ]);
+});
+
+test('all time counts customers who completed at least one ride or delivery', function () {
+    $trip = Trip::factory()->create(['type' => 'ride', 'status' => 'completed']);
+    $booking = fn (User $customer, string $status) => TripPassenger::query()->create([
+        'trip_id' => $trip->id,
+        'customer_id' => $customer->id,
+        'seats_requested' => 1,
+        'status' => $status,
+        'requested_at' => now(),
+    ]);
+
+    $rode = User::factory()->customer()->create();
+    $booking($rode, 'dropped_off');
+    $booking($rode, 'dropped_off'); // two trips, counted once
+
+    $sent = User::factory()->customer()->create();
+    DeliveryDetails::factory()->create([
+        'trip_id' => Trip::factory()->create(['type' => 'delivery', 'status' => 'completed'])->id,
+        'sender_id' => $sent->id,
+        'status' => 'dropped_off',
+        'dropped_off_at' => now(),
+        'final_fare' => 5000,
+        'currency_code' => 'UGX',
+        'payment_method' => 'cash',
+    ]);
+
+    $booking(User::factory()->customer()->create(), 'cancelled');
+    $booking(User::factory()->customer()->create(), 'picked_up'); // on the way, not completed yet
+    $booking(User::factory()->customer()->create(), 'dropped_off')->delete();
+    User::factory()->customer()->create(); // never booked
+
+    expect(app(DashboardMetricsService::class)->allTime())
+        ->customers->toBe(6)
+        ->customers_with_trip->toBe(2);
+
+    $this->seed(PermissionSeeder::class);
+    $this->actingAs(User::factory()->create()->assignRole('super_admin'));
+    Livewire::test(AllTimeOverview::class)->assertSee('2 have completed at least one trip, 6 joined this month');
 });
 
 test('today cards describe the change in plain words', function () {

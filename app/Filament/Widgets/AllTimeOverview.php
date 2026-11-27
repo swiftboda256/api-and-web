@@ -10,7 +10,8 @@ use Filament\Widgets\StatsOverviewWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 
 /**
- * Totals since launch (customers, commission earned), each with this month so far. Cached for 60s.
+ * Totals since launch: customers (how many have completed a trip, how many joined this month)
+ * and commission earned (with this month so far). Cached for 60s.
  */
 class AllTimeOverview extends StatsOverviewWidget
 {
@@ -35,9 +36,10 @@ class AllTimeOverview extends StatsOverviewWidget
 
         $customers = Stat::make('Total customers', number_format($totals['customers']))
             ->icon(Heroicon::OutlinedUsers)
-            ->description($totals['customers_this_month'] > 0
-                ? number_format($totals['customers_this_month']).' joined this month'
-                : 'No one has joined yet this month')
+            ->description(number_format($totals['customers_with_trip']).' have completed at least one trip, '
+                .($totals['customers_this_month'] > 0
+                    ? number_format($totals['customers_this_month']).' joined this month'
+                    : 'no one has joined yet this month'))
             ->descriptionIcon(Heroicon::UserPlus)
             ->color('primary');
 

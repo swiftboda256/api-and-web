@@ -9,6 +9,7 @@ use App\Models\SupportTicket;
 use App\Models\Transaction;
 use App\Models\Trip;
 use App\Models\TripFareBreakdown;
+use App\Models\TripPassenger;
 use App\Models\User;
 use App\Models\UserDeleteRequest;
 use App\Models\WithdrawalRequest;
@@ -121,9 +122,10 @@ class DashboardMetricsService
     }
 
     /**
-     * Totals since launch, with this month so far for context.
+     * Totals since launch, with this month so far for context. A customer has "completed a
+     * trip" once a ride they booked dropped them off, or a delivery they sent was dropped off.
      *
-     * @return array{customers: int, customers_this_month: int, commission: float, commission_this_month: float}
+     * @return array{customers: int, customers_with_trip: int, customers_this_month: int, commission: float, commission_this_month: float}
      */
     public function allTime(): array
     {
@@ -132,6 +134,16 @@ class DashboardMetricsService
 
             return [
                 'customers' => User::query()->role('customer')->count(),
+                'customers_with_trip' => User::query()
+                    ->role('customer')
+                    ->where(fn (Builder $query) => $query
+                        ->whereExists(TripPassenger::query()
+                            ->whereColumn('trip_passengers.customer_id', 'users.id')
+                            ->where('trip_passengers.status', 'dropped_off'))
+                        ->orWhereExists(DeliveryDetails::query()
+                            ->whereColumn('delivery_details.sender_id', 'users.id')
+                            ->where('delivery_details.status', 'dropped_off')))
+                    ->count(),
                 'customers_this_month' => User::query()->role('customer')->where('created_at', '>=', $monthStart)->count(),
                 'commission' => (float) $this->completedCommissions()->sum('amount'),
                 'commission_this_month' => (float) $this->completedCommissions()->where('created_at', '>=', $monthStart)->sum('amount'),
